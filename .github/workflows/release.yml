@@ -61,9 +61,13 @@ jobs:
         run: |
           mkdir -p stage
           # Re-use the previously published appcast so generate_appcast preserves
-          # its existing entries instead of starting from scratch.
+          # its existing entries instead of starting from scratch. Redirect
+          # creates the file before `git show` runs, so explicitly drop any
+          # empty result (e.g. first release where gh-pages has no appcast yet)
+          # — generate_appcast errors on a zero-byte appcast.xml.
           if git fetch origin gh-pages 2>/dev/null; then
             git show origin/gh-pages:appcast.xml > stage/appcast.xml 2>/dev/null || true
+            [ -s stage/appcast.xml ] || rm -f stage/appcast.xml
           fi
           cp "build/${{ steps.pkg.outputs.zip }}" stage/
 
