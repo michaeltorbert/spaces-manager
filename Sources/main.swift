@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Foundation
 import Sparkle
 
@@ -285,6 +286,76 @@ final class SpaceRowView: NSView {
     }
 }
 
+// MARK: - Global hotkeys (Carbon, no Accessibility permission required)
+
+/// Binds ⌃⌥⌘1..⌃⌥⌘9 to call `action(0..8)` from anywhere in the system.
+/// Uses Carbon's RegisterEventHotKey — deprecated but still functional and the
+/// only zero-permission path for system-wide hotkeys.
+final class GlobalHotkeys {
+    private var refs: [EventHotKeyRef] = []
+    private var handler: EventHandlerRef?
+    private let action: (Int) -> Void
+
+    init(action: @escaping (Int) -> Void) {
+        self.action = action
+        installHandler()
+        register()
+    }
+
+    deinit {
+        for ref in refs { UnregisterEventHotKey(ref) }
+        if let handler { RemoveEventHandler(handler) }
+    }
+
+    private func register() {
+        let modifiers = UInt32(controlKey | optionKey | cmdKey)
+        let codes: [UInt32] = [
+            UInt32(kVK_ANSI_1), UInt32(kVK_ANSI_2), UInt32(kVK_ANSI_3),
+            UInt32(kVK_ANSI_4), UInt32(kVK_ANSI_5), UInt32(kVK_ANSI_6),
+            UInt32(kVK_ANSI_7), UInt32(kVK_ANSI_8), UInt32(kVK_ANSI_9),
+        ]
+        let signature = fourCharCode("SPMN")
+        for (i, code) in codes.enumerated() {
+            let id = EventHotKeyID(signature: signature, id: UInt32(i + 1))
+            var ref: EventHotKeyRef?
+            let status = RegisterEventHotKey(code, modifiers, id,
+                                             GetApplicationEventTarget(), 0, &ref)
+            if status == noErr, let ref { refs.append(ref) }
+        }
+    }
+
+    private func installHandler() {
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
+                                 eventKind: UInt32(kEventHotKeyPressed))
+        let userData = Unmanaged.passUnretained(self).toOpaque()
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            { (_, event, userData) -> OSStatus in
+                guard let event, let userData else { return OSStatus(eventNotHandledErr) }
+                var hkid = EventHotKeyID()
+                let status = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hkid)
+                guard status == noErr else { return status }
+                let owner = Unmanaged<GlobalHotkeys>.fromOpaque(userData).takeUnretainedValue()
+                owner.action(Int(hkid.id) - 1)
+                return noErr
+            },
+            1, &spec, userData, &handler)
+    }
+
+    private func fourCharCode(_ s: String) -> OSType {
+        var v: OSType = 0
+        for byte in s.utf8 { v = (v << 8) | OSType(byte) }
+        return v
+    }
+}
+
 // MARK: - HUD
 
 final class HUDWindow: NSPanel {
@@ -372,6 +443,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updaterDelegate: nil,
         userDriverDelegate: nil
     )
+    private var hotkeys: GlobalHotkeys?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -397,6 +469,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self, selector: #selector(refresh),
             name: NSNotification.Name("com.apple.exposeworkspacesdidchange"),
             object: nil)
+
+        hotkeys = GlobalHotkeys { [weak self] index in
+            self?.switchToSpace(atIndex: index)
+        }
+    }
+
+    private func switchToSpace(atIndex index: Int) {
+        let snap = SpacesProvider.snapshot()
+        let grouped = Dictionary(
+            grouping: snap.spaces.filter { !$0.isFullscreen },
+            by: { $0.displayID })
+        let ordered = grouped.keys.sorted().flatMap { grouped[$0] ?? [] }
+        guard index >= 0, index < ordered.count else { return }
+        switchTo(space: ordered[index])
     }
 
     @objc func refresh() {
