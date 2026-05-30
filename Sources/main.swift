@@ -291,23 +291,32 @@ final class SpaceRowView: NSView {
 /// Binds ⌃⌥⌘1..⌃⌥⌘9 to call `action(0..8)` from anywhere in the system.
 /// Uses Carbon's RegisterEventHotKey — deprecated but still functional and the
 /// only zero-permission path for system-wide hotkeys.
+///
+/// Registration is **opt-in**: `init` installs the event handler but does not
+/// reserve any hotkeys. Call `register()` to claim the shortcuts and
+/// `unregister()` to release them. The gating exists because the underlying
+/// `switchTo(space:)` path is reported as not actually switching spaces on
+/// macOS Tahoe (see #10) — claiming the shortcuts before that is fixed would
+/// silently consume them system-wide without delivering the action.
 final class GlobalHotkeys {
     private var refs: [EventHotKeyRef] = []
     private var handler: EventHandlerRef?
     private let action: (Int) -> Void
+    private var isRegistered = false
 
     init(action: @escaping (Int) -> Void) {
         self.action = action
         installHandler()
-        register()
     }
 
     deinit {
-        for ref in refs { UnregisterEventHotKey(ref) }
+        unregister()
         if let handler { RemoveEventHandler(handler) }
     }
 
-    private func register() {
+    /// Reserve ⌃⌥⌘1..⌃⌥⌘9 system-wide. No-op if already registered.
+    func register() {
+        guard !isRegistered else { return }
         let modifiers = UInt32(controlKey | optionKey | cmdKey)
         let codes: [UInt32] = [
             UInt32(kVK_ANSI_1), UInt32(kVK_ANSI_2), UInt32(kVK_ANSI_3),
@@ -322,6 +331,14 @@ final class GlobalHotkeys {
                                              GetApplicationEventTarget(), 0, &ref)
             if status == noErr, let ref { refs.append(ref) }
         }
+        isRegistered = true
+    }
+
+    /// Release any reserved hotkeys. Safe to call when not registered.
+    func unregister() {
+        for ref in refs { UnregisterEventHotKey(ref) }
+        refs = []
+        isRegistered = false
     }
 
     private func installHandler() {
@@ -472,6 +489,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         hotkeys = GlobalHotkeys { [weak self] index in
             self?.switchToSpace(atIndex: index)
+        }
+        // Registration is gated until the underlying space-switch path is
+        // confirmed working on macOS Tahoe (see #10). Until then, reserving
+        // ⌃⌥⌘1..9 system-wide would silently consume those shortcuts without
+        // delivering the user-visible action. Power users can opt in via:
+        //   defaults write local.spacesmanager enableGlobalHotkeys -bool YES
+        if UserDefaults.standard.bool(forKey: "enableGlobalHotkeys") {
+            hotkeys?.register()
         }
     }
 
