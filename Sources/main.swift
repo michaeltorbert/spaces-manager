@@ -32,10 +32,16 @@ func SLSCopyWindowsWithOptionsAndTags(_ cid: CGSConnectionID,
                                        _ setTags: UnsafeMutablePointer<UInt64>,
                                        _ clearTags: UnsafeMutablePointer<UInt64>) -> CFArray?
 
+// Returns the owner's WindowServer connection ID (not a PID), via the out param.
 @_silgen_name("SLSGetWindowOwner")
 func SLSGetWindowOwner(_ cid: CGSConnectionID,
                         _ windowID: UInt32,
-                        _ pid: UnsafeMutablePointer<pid_t>) -> Int32
+                        _ ownerConnection: UnsafeMutablePointer<Int32>) -> Int32
+
+// Resolves a WindowServer connection ID to the owning process's PID.
+@_silgen_name("SLSConnectionGetPID")
+func SLSConnectionGetPID(_ ownerConnection: Int32,
+                          _ pid: UnsafeMutablePointer<pid_t>) -> Int32
 
 // MARK: - Space model
 
@@ -141,9 +147,13 @@ enum DominantAppFinder {
         var pidCounts: [pid_t: Int] = [:]
         let ourPid = getpid()
         for wid in windows {
+            // SLSGetWindowOwner gives back the owner's WindowServer connection
+            // ID, *not* a PID. Resolve via SLSConnectionGetPID before counting.
+            var ownerCID: Int32 = 0
+            guard SLSGetWindowOwner(cid, UInt32(wid), &ownerCID) == 0
+            else { continue }
             var pid: pid_t = 0
-            // SLSGetWindowOwner returns 0 on success.
-            guard SLSGetWindowOwner(cid, UInt32(wid), &pid) == 0,
+            guard SLSConnectionGetPID(ownerCID, &pid) == 0,
                   pid > 1, pid != ourPid
             else { continue }
             pidCounts[pid, default: 0] += 1
