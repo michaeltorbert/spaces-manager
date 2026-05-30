@@ -24,6 +24,19 @@ func CGSManagedDisplaySetCurrentSpace(_ cid: CGSConnectionID,
 @_silgen_name("CGSSpaceDestroy")
 func CGSSpaceDestroy(_ cid: CGSConnectionID, _ space: CGSSpaceID)
 
+@_silgen_name("SLSCopyWindowsWithOptionsAndTags")
+func SLSCopyWindowsWithOptionsAndTags(_ cid: CGSConnectionID,
+                                       _ owner: UInt32,
+                                       _ spaces: CFArray,
+                                       _ options: UInt32,
+                                       _ setTags: UnsafeMutablePointer<UInt64>,
+                                       _ clearTags: UnsafeMutablePointer<UInt64>) -> CFArray?
+
+@_silgen_name("SLSGetWindowOwner")
+func SLSGetWindowOwner(_ cid: CGSConnectionID,
+                        _ windowID: UInt32,
+                        _ pid: UnsafeMutablePointer<pid_t>) -> Int32
+
 // MARK: - Space model
 
 struct Space {
@@ -110,6 +123,37 @@ enum SpacesProvider {
     }
 }
 
+// MARK: - Dominant-app detection
+
+enum DominantAppFinder {
+    /// Returns the running app that owns the most on-screen windows on the
+    /// given space, or nil if no identifiable app windows were found.
+    static func find(forSpace id64: CGSSpaceID) -> NSRunningApplication? {
+        guard id64 != 0 else { return nil }
+        let cid = CGSMainConnectionID()
+        let spaces = [NSNumber(value: id64)] as CFArray
+        var setTags: UInt64 = 0
+        var clearTags: UInt64 = 0
+        guard let windows = SLSCopyWindowsWithOptionsAndTags(
+            cid, 0, spaces, 2, &setTags, &clearTags) as? [Int]
+        else { return nil }
+
+        var pidCounts: [pid_t: Int] = [:]
+        let ourPid = getpid()
+        for wid in windows {
+            var pid: pid_t = 0
+            // SLSGetWindowOwner returns 0 on success.
+            guard SLSGetWindowOwner(cid, UInt32(wid), &pid) == 0,
+                  pid > 1, pid != ourPid
+            else { continue }
+            pidCounts[pid, default: 0] += 1
+        }
+        guard let topPid = pidCounts.max(by: { $0.value < $1.value })?.key
+        else { return nil }
+        return NSRunningApplication(processIdentifier: topPid)
+    }
+}
+
 // MARK: - Mission Control launcher (public API only)
 
 enum MissionControl {
@@ -174,7 +218,8 @@ final class SpaceRowView: NSView {
     private var trackingArea: NSTrackingArea?
     private var isHovered = false
 
-    init(name: String, isActive: Bool, canSwitch: Bool,
+    init(name: String, subtitle: String?, iconImage: NSImage?,
+         isActive: Bool, canSwitch: Bool,
          onSwitch: @escaping () -> Void,
          onRename: @escaping () -> Void,
          onDelete: @escaping () -> Void) {
@@ -187,15 +232,30 @@ final class SpaceRowView: NSView {
         wantsLayer = true
         autoresizingMask = [.width]
 
-        iconView.image = NSImage(systemSymbolName: "display",
-                                 accessibilityDescription: nil)
-        iconView.contentTintColor = .secondaryLabelColor
+        if let iconImage {
+            iconView.image = iconImage
+            iconView.contentTintColor = nil
+        } else {
+            iconView.image = NSImage(systemSymbolName: "display",
+                                     accessibilityDescription: nil)
+            iconView.contentTintColor = .secondaryLabelColor
+        }
+        iconView.imageScaling = .scaleProportionallyDown
         iconView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(iconView)
 
-        nameLabel.stringValue = name
-        nameLabel.font = .menuFont(ofSize: 0)
-        nameLabel.textColor = .labelColor
+        let menuFont = NSFont.menuFont(ofSize: 0)
+        let attr = NSMutableAttributedString(string: name, attributes: [
+            .foregroundColor: NSColor.labelColor,
+            .font: menuFont,
+        ])
+        if let subtitle, !subtitle.isEmpty {
+            attr.append(NSAttributedString(string: " · \(subtitle)", attributes: [
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .font: menuFont,
+            ]))
+        }
+        nameLabel.attributedStringValue = attr
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(nameLabel)
@@ -444,11 +504,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             for sp in (grouped[display] ?? []) where !sp.isFullscreen {
                 let name = store.displayName(for: sp)
+                let dominantApp = DominantAppFinder.find(forSpace: sp.id64)
                 let isActive = (sp.key == snap.activeKey)
                 let canSwitch = !sp.displayID.isEmpty && sp.id64 != 0
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
                     name: name,
+                    subtitle: dominantApp?.localizedName,
+                    iconImage: dominantApp?.icon,
                     isActive: isActive,
                     canSwitch: canSwitch,
                     onSwitch: { [weak self] in self?.switchTo(space: sp) },
