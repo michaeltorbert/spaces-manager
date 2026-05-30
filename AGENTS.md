@@ -6,6 +6,38 @@ For AI coding agents (Codex, Claude Code, Cursor, etc.) working on SpacesManager
 
 macOS menu-bar utility for naming Mission Control spaces. Swift, AppKit, ad-hoc signed, ships outside the App Store. User-facing description in [README.md](README.md); release runbook in [RELEASING.md](RELEASING.md).
 
+## GitHub identity
+
+Before any GitHub write, verify the target repo is
+`michaeltorbert/spaces-manager`.
+
+Use the appropriate GitHub App identity rather than the personal
+`michaeltorbert` account.
+
+Codex identity:
+- Visible actor: `codex-bot-mt[bot]`
+- Use the local GitHub App token path, such as `github-app-curl`, for writes.
+
+Claude identity:
+- GitHub App profile: `claude`
+- Visible actor: `claude-bot-mt[bot]`
+- Use `github-app-curl --profile claude` for Claude-attributed writes.
+
+Do not use connector-backed GitHub writes when bot attribution matters, because
+those may appear as the personal account.
+
+## Default agent workflow
+
+Unless the user explicitly asks for a different flow:
+
+1. Claude writes the implementation code.
+2. Claude opens the pull request using the Claude GitHub App identity.
+3. Codex reviews the pull request using the Codex GitHub App identity.
+
+Keep implementation and review roles separate. Codex should not push fixes to a
+Claude-authored PR unless the user explicitly asks Codex to take over the
+implementation work.
+
 ## Build & smoke test
 
 ```sh
