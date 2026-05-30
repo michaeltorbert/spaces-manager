@@ -128,9 +128,9 @@ final class NameStore {
     private let key = "spaceNames"
 
     init() {
-        // One-shot migration from prior bundle id `local.spacesmanager`.
+        // One-shot migration from prior bundle id `local.spaceshud`.
         if defaults.dictionary(forKey: key) == nil,
-           let legacy = UserDefaults(suiteName: "local.spacesmanager")?
+           let legacy = UserDefaults(suiteName: "local.spaceshud")?
                             .dictionary(forKey: key) {
             defaults.set(legacy, forKey: key)
         }
@@ -473,7 +473,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(addSpace)
 
         menu.addItem(NSMenuItem.separator())
-        let quit = NSMenuItem(title: "Quit SpacesHUD",
+        let quit = NSMenuItem(title: "Quit SpacesManager",
                               action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")
         menu.addItem(quit)

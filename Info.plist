@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>SpacesHUD</string>
+    <string>SpacesManager</string>
     <key>CFBundleDisplayName</key>
-    <string>SpacesHUD</string>
+    <string>SpacesManager</string>
     <key>CFBundleIdentifier</key>
-    <string>local.spaceshud</string>
+    <string>local.spacesmanager</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
     <key>CFBundleExecutable</key>
-    <string>SpacesHUD</string>
+    <string>SpacesManager</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSUIElement</key>

@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-NAME="SpacesHUD"
+NAME="SpacesManager"
 BUILD_DIR="build"
 APP="$BUILD_DIR/$NAME.app"
 MACOS="$APP/Contents/MacOS"
@@ -32,4 +32,4 @@ echo "Built:    $APP"
 echo "Signed:   ad-hoc"
 echo "Verified: deep + strict"
 echo "Run:      open '$APP'"
-echo "Quit:     menu bar → Quit SpacesHUD"
+echo "Quit:     menu bar → Quit SpacesManager"
