@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Sparkle
 
 // MARK: - Private CoreGraphics Services bindings (read-only; no injection)
 
@@ -366,6 +367,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastActiveKey: String?
     private var editorWindow: NSWindow?
     private var editorFields: [(key: String, field: NSTextField)] = []
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -473,6 +479,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(addSpace)
 
         menu.addItem(NSMenuItem.separator())
+
+        let checkForUpdates = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+            keyEquivalent: ""
+        )
+        checkForUpdates.target = updaterController
+        menu.addItem(checkForUpdates)
+
         let quit = NSMenuItem(title: "Quit SpacesManager",
                               action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")

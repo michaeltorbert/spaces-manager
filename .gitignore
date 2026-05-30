@@ -1,4 +1,5 @@
 build/
+Frameworks/
 .DS_Store
 *.swp
 *.swo

@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Derive version
+        id: ver
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          SHORT="${TAG#v}"
+          BUILD=$(git rev-list --count HEAD)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+
+      - name: Fail if SUPublicEDKey is still a placeholder
+        run: |
+          PUB=$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" Info.plist 2>/dev/null || echo "")
+          if [[ "$PUB" == REPLACE-* || -z "$PUB" ]]; then
+            echo "::error::SUPublicEDKey in Info.plist is still a placeholder. Run Frameworks/bin/generate_keys locally and paste the public key into Info.plist before tagging a release."
+            exit 1
+          fi
+
+      - name: Bump Info.plist version
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ steps.ver.outputs.short }}" Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ steps.ver.outputs.build }}" Info.plist
+
+      - name: Build SpacesManager.app
+        run: ./build.sh
+
+      - name: Package as versioned zip
+        id: pkg
+        run: |
+          ZIP_NAME="SpacesManager-${{ steps.ver.outputs.short }}.zip"
+          ( cd build && ditto -c -k --keepParent SpacesManager.app "$ZIP_NAME" )
+          echo "zip=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Sparkle EdDSA private key
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/sparkle"
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle/priv.key"
+          chmod 600 "$RUNNER_TEMP/sparkle/priv.key"
+
+      - name: Stage release directory
+        run: |
+          mkdir -p stage
+          # Re-use the previously published appcast so generate_appcast preserves
+          # its existing entries instead of starting from scratch.
+          if git fetch origin gh-pages 2>/dev/null; then
+            git show origin/gh-pages:appcast.xml > stage/appcast.xml 2>/dev/null || true
+          fi
+          cp "build/${{ steps.pkg.outputs.zip }}" stage/
+
+      - name: Generate appcast
+        run: |
+          ./Frameworks/bin/generate_appcast \
+            --ed-key-file "$RUNNER_TEMP/sparkle/priv.key" \
+            --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${{ steps.ver.outputs.tag }}/" \
+            --link "https://github.com/${{ github.repository }}" \
+            stage
+
+      - name: Attach zip to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ steps.ver.outputs.tag }}" "build/${{ steps.pkg.outputs.zip }}" --clobber
+
+      - name: Stage appcast.xml for gh-pages publish
+        run: |
+          mkdir -p publish
+          cp stage/appcast.xml publish/
+
+      - name: Publish appcast.xml to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./publish
+          publish_branch: gh-pages
+          keep_files: false
+          commit_message: "Update appcast for ${{ steps.ver.outputs.tag }}"

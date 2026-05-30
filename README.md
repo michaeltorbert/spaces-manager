@@ -19,6 +19,7 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 - **Rename All Spaces…** opens a window for bulk editing.
 - **Add New Space** opens Mission Control so you can click `+` (Apple removed the programmatic-add private API on Tahoe — see [Tahoe findings](#tahoe-private-api-findings)).
 - **Names persist** in `UserDefaults` under bundle id `local.spacesmanager`, keyed by each space's UUID (or a stable per-display fallback key when macOS returns an empty UUID).
+- **Self-updates** via Sparkle: a daily background check + a "Check for Updates…" menu item. Updates are verified with an EdDSA signature embedded in the app; only releases signed with the matching private key will install.
 
 ---
 
@@ -35,30 +36,86 @@ No Apple Developer account, no entitlements, no Accessibility permission, no SIP
 ./build.sh
 ```
 
-This compiles `Sources/main.swift`, assembles `build/SpacesManager.app`, strips xattrs, ad-hoc signs, and verifies the signature passes `codesign --verify --deep --strict`.
+On the first run this downloads Sparkle 2.9.2 (~15 MB) into `Frameworks/` and caches it for subsequent builds. The script then compiles `Sources/main.swift`, copies `Sparkle.framework` into the app bundle, strips xattrs, ad-hoc signs the nested XPC services + framework + outer app in that order, and verifies the chain passes `codesign --verify --deep --strict`.
 
 ## Install
 
+Download the latest `SpacesManager-<version>.zip` from [Releases](https://github.com/michaeltorbert/spaces-manager/releases), unzip, and:
+
 ```sh
-cp -R build/SpacesManager.app /Applications/
+xattr -dr com.apple.quarantine ~/Downloads/SpacesManager.app
+mv ~/Downloads/SpacesManager.app /Applications/
 open /Applications/SpacesManager.app
 ```
 
+The `xattr` line strips Gatekeeper's quarantine flag. Without it macOS refuses to launch the ad-hoc-signed app and offers no override path. (Right-click → Open → Open Anyway sometimes works too, but Tahoe is grumpier and `xattr` is the reliable path.) Future updates flow through Sparkle and don't trip this — only the first install does.
+
 To start at login: **System Settings → General → Login Items & Extensions → +** under "Open at Login" → pick `/Applications/SpacesManager.app`.
+
+## Releasing a new version
+
+Tag the commit and push the tag — CI does the rest:
+
+```sh
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+The workflow at `.github/workflows/release.yml`:
+
+1. Bumps `CFBundleShortVersionString` from the tag and `CFBundleVersion` from `git rev-list --count HEAD`.
+2. Runs `./build.sh` (which vendors Sparkle).
+3. Zips just `SpacesManager.app` as `SpacesManager-<version>.zip` (Sparkle's translocation guidance — never zip a parent folder).
+4. Signs the zip with the EdDSA private key from `SPARKLE_ED_PRIVATE_KEY` (GitHub Secret).
+5. Updates `appcast.xml` via `generate_appcast`, preserving prior entries.
+6. Attaches the zip to the GitHub Release.
+7. Publishes `appcast.xml` to the `gh-pages` branch.
+
+### One-time setup before the first release
+
+Once per repo. Required before any tagged release can build successfully.
+
+1. Vendor Sparkle locally so the `bin/` tools are available:
+
+   ```sh
+   ./build.sh   # downloads Sparkle into Frameworks/
+   ```
+
+2. Generate a Sparkle EdDSA keypair:
+
+   ```sh
+   ./Frameworks/bin/generate_keys
+   ```
+
+   This stores the private key in your macOS keychain and prints the public key. Paste the printed string into `Info.plist` under `SUPublicEDKey`, replacing the `REPLACE-WITH-...` placeholder. Commit that change.
+
+3. Export the private key for CI:
+
+   ```sh
+   ./Frameworks/bin/generate_keys -x sparkle-priv.txt
+   ```
+
+4. In the repo's **Settings → Secrets and variables → Actions**, add a new repository secret named `SPARKLE_ED_PRIVATE_KEY` with the contents of `sparkle-priv.txt`. Then delete `sparkle-priv.txt`.
+
+5. Enable GitHub Pages: **Settings → Pages → Source: "Deploy from a branch", Branch: `gh-pages`, Folder: `/ (root)`**. The first release run creates the `gh-pages` branch; you can configure Pages either before or after that first run.
+
+The public key in `Info.plist` and the private key in GitHub Secrets are a matched pair. Keep the private key safe — without Developer ID signing, rotating the EdDSA key strands existing installs (they can't verify updates signed with a new key).
 
 ---
 
 ## Project layout
 
 ```
-Sources/main.swift   ~525 lines, the entire app
-Info.plist           bundle metadata (LSUIElement = true, bundle id, etc.)
-build.sh             swiftc + xattr -cr + codesign + verify
-LICENSE              MIT
-README.md            this file
+Sources/main.swift              ~675 lines, the entire app
+Info.plist                      bundle metadata + Sparkle keys (SUFeedURL, SUPublicEDKey)
+build.sh                        vendors Sparkle, runs swiftc, codesigns the nested chain, verifies
+.github/workflows/release.yml   tag-triggered: build, sign, regenerate appcast, publish
+Frameworks/                     gitignored; populated by build.sh on first run
+LICENSE                         MIT
+README.md                       this file
 ```
 
-Single-file Swift app, no Xcode project, no Swift Package Manager. Edit the source, run `./build.sh`, drag the new `build/SpacesManager.app` over the installed copy.
+Single-file Swift app. No Xcode project, no Swift Package Manager — Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. For real releases, push a tag.
 
 ---
 
