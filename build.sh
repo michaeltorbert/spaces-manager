@@ -35,6 +35,8 @@ mkdir -p "$MACOS" "$APP_FRAMEWORKS"
 swiftc -O \
   -target arm64-apple-macos13 \
   -framework AppKit \
+  -F /System/Library/PrivateFrameworks \
+  -framework SkyLight \
   -F "$VENDOR_DIR" \
   -framework Sparkle \
   -Xlinker -rpath -Xlinker "@executable_path/../Frameworks" \

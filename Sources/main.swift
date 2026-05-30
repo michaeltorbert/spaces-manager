@@ -24,6 +24,14 @@ func CGSManagedDisplaySetCurrentSpace(_ cid: CGSConnectionID,
 @_silgen_name("CGSSpaceDestroy")
 func CGSSpaceDestroy(_ cid: CGSConnectionID, _ space: CGSSpaceID)
 
+@_silgen_name("SLSCopyWindowsWithOptionsAndTags")
+func SLSCopyWindowsWithOptionsAndTags(_ cid: CGSConnectionID,
+                                       _ owner: UInt32,
+                                       _ spaces: CFArray,
+                                       _ options: UInt32,
+                                       _ setTags: UnsafeMutablePointer<UInt64>,
+                                       _ clearTags: UnsafeMutablePointer<UInt64>) -> CFArray?
+
 // MARK: - Space model
 
 struct Space {
@@ -107,6 +115,26 @@ enum SpacesProvider {
                 "SpacesDisplayConfiguration.Management Data.Monitors") as? [[String: Any]]
         else { return [] }
         return monitors
+    }
+}
+
+// MARK: - Window counts per space
+
+enum WindowCounter {
+    /// Count of on-screen "normal" windows on the given space.
+    /// Returns 0 if the space ID is unknown or the private API call fails.
+    static func count(forSpace id64: CGSSpaceID) -> Int {
+        guard id64 != 0 else { return 0 }
+        let cid = CGSMainConnectionID()
+        let spaces = [NSNumber(value: id64)] as CFArray
+        var setTags: UInt64 = 0
+        var clearTags: UInt64 = 0
+        // options=2 → on-screen windows only (matches Mission Control's notion of
+        // "windows on this space", excludes minimized/hidden and most utility panels).
+        guard let windows = SLSCopyWindowsWithOptionsAndTags(
+            cid, 0, spaces, 2, &setTags, &clearTags) as? [Int]
+        else { return 0 }
+        return windows.count
     }
 }
 
@@ -443,17 +471,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 menu.addItem(header)
             }
             for sp in (grouped[display] ?? []) where !sp.isFullscreen {
-                let name = store.displayName(for: sp)
+                let baseName = store.displayName(for: sp)
+                let count = WindowCounter.count(forSpace: sp.id64)
+                let displayed = count > 0 ? "\(baseName) (\(count))" : baseName
                 let isActive = (sp.key == snap.activeKey)
                 let canSwitch = !sp.displayID.isEmpty && sp.id64 != 0
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
-                    name: name,
+                    name: displayed,
                     isActive: isActive,
                     canSwitch: canSwitch,
                     onSwitch: { [weak self] in self?.switchTo(space: sp) },
                     onRename: { [weak self] in self?.promptRename(key: sp.key) },
-                    onDelete: { [weak self] in self?.confirmDelete(space: sp, name: name) }
+                    onDelete: { [weak self] in self?.confirmDelete(space: sp, name: baseName) }
                 )
                 menu.addItem(item)
             }
