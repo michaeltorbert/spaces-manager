@@ -54,52 +54,12 @@ To start at login: **System Settings → General → Login Items & Extensions �
 
 ## Releasing a new version
 
-Tag the commit and push the tag — CI does the rest:
-
 ```sh
 git tag v1.0.1
 git push origin v1.0.1
 ```
 
-The workflow at `.github/workflows/release.yml`:
-
-1. Bumps `CFBundleShortVersionString` from the tag and `CFBundleVersion` from `git rev-list --count HEAD`.
-2. Runs `./build.sh` (which vendors Sparkle).
-3. Zips just `SpacesManager.app` as `SpacesManager-<version>.zip` (Sparkle's translocation guidance — never zip a parent folder).
-4. Signs the zip with the EdDSA private key from `SPARKLE_ED_PRIVATE_KEY` (GitHub Secret).
-5. Updates `appcast.xml` via `generate_appcast`, preserving prior entries.
-6. Attaches the zip to the GitHub Release.
-7. Publishes `appcast.xml` to the `gh-pages` branch.
-
-### One-time setup before the first release
-
-Once per repo. Required before any tagged release can build successfully.
-
-1. Vendor Sparkle locally so the `bin/` tools are available:
-
-   ```sh
-   ./build.sh   # downloads Sparkle into Frameworks/
-   ```
-
-2. Generate a Sparkle EdDSA keypair:
-
-   ```sh
-   ./Frameworks/bin/generate_keys
-   ```
-
-   This stores the private key in your macOS keychain and prints the public key. Paste the printed string into `Info.plist` under `SUPublicEDKey`, replacing the `REPLACE-WITH-...` placeholder. Commit that change.
-
-3. Export the private key for CI:
-
-   ```sh
-   ./Frameworks/bin/generate_keys -x sparkle-priv.txt
-   ```
-
-4. In the repo's **Settings → Secrets and variables → Actions**, add a new repository secret named `SPARKLE_ED_PRIVATE_KEY` with the contents of `sparkle-priv.txt`. Then delete `sparkle-priv.txt`.
-
-5. Enable GitHub Pages: **Settings → Pages → Source: "Deploy from a branch", Branch: `gh-pages`, Folder: `/ (root)`**. The first release run creates the `gh-pages` branch; you can configure Pages either before or after that first run.
-
-The public key in `Info.plist` and the private key in GitHub Secrets are a matched pair. Keep the private key safe — without Developer ID signing, rotating the EdDSA key strands existing installs (they can't verify updates signed with a new key).
+CI builds, signs, publishes the appcast, attaches the zip to the GitHub Release. Installed copies auto-update on the next daily check. See [RELEASING.md](RELEASING.md) for the full runbook (what each workflow step does, version conventions, rollback, the one-time setup that's already been done).
 
 ---
 
@@ -113,6 +73,7 @@ build.sh                        vendors Sparkle, runs swiftc, codesigns the nest
 Frameworks/                     gitignored; populated by build.sh on first run
 LICENSE                         MIT
 README.md                       this file
+RELEASING.md                    release runbook (cut a release, rollback, key-management notes)
 ```
 
 Single-file Swift app. No Xcode project, no Swift Package Manager — Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. For real releases, push a tag.
