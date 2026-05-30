@@ -83,7 +83,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ steps.ver.outputs.tag }}" "build/${{ steps.pkg.outputs.zip }}" --clobber
+          TAG="${{ steps.ver.outputs.tag }}"
+          ZIP="build/${{ steps.pkg.outputs.zip }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" "$ZIP" --title "$TAG" --generate-notes
+          fi
 
       - name: Stage appcast.xml for gh-pages publish
         run: |
