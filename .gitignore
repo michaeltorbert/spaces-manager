@@ -1,5 +1,7 @@
 build/
 Frameworks/
+.build/
+Package.resolved
 .DS_Store
 *.swp
 *.swo
