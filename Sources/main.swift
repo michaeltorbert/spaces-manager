@@ -285,8 +285,12 @@ enum SpaceSwitcher {
     private static let horizontalMotion: Int64 = 1
     private static let swipeVelocity = 400.0
     private static let swipeProgress = 2.0
-    private static let swipeStepDelay: TimeInterval = 0.85
+    private static let settlePollInterval: TimeInterval = 0.08
+    private static let settleTimeout: TimeInterval = 1.5
+    private static let postTransitionDelay: TimeInterval = 0.30
+    private static let droppedSwipeRetryDelay: TimeInterval = 0.30
     private static var pendingSwipeWorkItems: [DispatchWorkItem] = []
+    private static var swipeSequenceID = 0
 
     static func switchTo(space target: Space, in snapshot: Snapshot) -> SpaceSwitchResult {
         guard let currentKey = snapshot.currentKeysByDisplay[target.displayID]
@@ -321,8 +325,12 @@ enum SpaceSwitcher {
             return .unavailable
         }
 
-        let maxAttempts = max(minimumSteps + 6, displaySpaces.count + 3)
-        postSwipeSequence(targetKey: target.key, maxAttempts: maxAttempts, goRight: goRight)
+        let maxAttempts = max(minimumSteps + 3, displaySpaces.count + 2)
+        postSwipeSequence(
+            targetKey: target.key,
+            displayID: target.displayID,
+            maxAttempts: maxAttempts,
+            initialGoRight: goRight)
         return .switched
     }
 
@@ -332,24 +340,133 @@ enum SpaceSwitcher {
     }
 
     private static func postSwipeSequence(targetKey: String,
+                                          displayID: String,
                                           maxAttempts: Int,
-                                          goRight: Bool) {
+                                          initialGoRight: Bool) {
+        cancelPendingSwipeSequence()
+        swipeSequenceID += 1
+        let sequenceID = swipeSequenceID
+        advanceSwipeSequence(
+            sequenceID: sequenceID,
+            targetKey: targetKey,
+            displayID: displayID,
+            attemptsRemaining: maxAttempts,
+            fallbackGoRight: initialGoRight)
+    }
+
+    private static func advanceSwipeSequence(sequenceID: Int,
+                                             targetKey: String,
+                                             displayID: String,
+                                             attemptsRemaining: Int,
+                                             fallbackGoRight: Bool) {
+        guard sequenceID == swipeSequenceID else { return }
+        guard attemptsRemaining > 0 else {
+            finishSwipeSequence(sequenceID: sequenceID)
+            return
+        }
+
+        let snapshot = SpacesProvider.snapshot()
+        guard let currentKey = snapshot.currentKeysByDisplay[displayID]
+            ?? snapshot.activeKey
+        else {
+            finishSwipeSequence(sequenceID: sequenceID)
+            return
+        }
+        guard currentKey != targetKey else {
+            finishSwipeSequence(sequenceID: sequenceID)
+            return
+        }
+
+        let displaySpaces = snapshot.spaces.filter { $0.displayID == displayID }
+        let goRight: Bool
+        if let currentIndex = displaySpaces.firstIndex(where: { $0.key == currentKey }),
+           let targetIndex = displaySpaces.firstIndex(where: { $0.key == targetKey }),
+           currentIndex != targetIndex {
+            goRight = targetIndex > currentIndex
+        } else {
+            goRight = fallbackGoRight
+        }
+
+        postSwipeGesture(goRight: goRight)
+        waitForSpaceTransition(
+            sequenceID: sequenceID,
+            previousKey: currentKey,
+            targetKey: targetKey,
+            displayID: displayID,
+            attemptsRemaining: attemptsRemaining - 1,
+            fallbackGoRight: goRight,
+            startedAt: Date())
+    }
+
+    private static func waitForSpaceTransition(sequenceID: Int,
+                                               previousKey: String,
+                                               targetKey: String,
+                                               displayID: String,
+                                               attemptsRemaining: Int,
+                                               fallbackGoRight: Bool,
+                                               startedAt: Date) {
+        scheduleSwipeWork(after: settlePollInterval) {
+            guard sequenceID == swipeSequenceID else { return }
+
+            let snapshot = SpacesProvider.snapshot()
+            let currentKey = snapshot.currentKeysByDisplay[displayID]
+                ?? snapshot.activeKey
+            if currentKey == targetKey {
+                finishSwipeSequence(sequenceID: sequenceID)
+                return
+            }
+
+            if let currentKey, currentKey != previousKey {
+                scheduleSwipeWork(after: postTransitionDelay) {
+                    advanceSwipeSequence(
+                        sequenceID: sequenceID,
+                        targetKey: targetKey,
+                        displayID: displayID,
+                        attemptsRemaining: attemptsRemaining,
+                        fallbackGoRight: fallbackGoRight)
+                }
+                return
+            }
+
+            if Date().timeIntervalSince(startedAt) >= settleTimeout {
+                scheduleSwipeWork(after: droppedSwipeRetryDelay) {
+                    advanceSwipeSequence(
+                        sequenceID: sequenceID,
+                        targetKey: targetKey,
+                        displayID: displayID,
+                        attemptsRemaining: attemptsRemaining,
+                        fallbackGoRight: fallbackGoRight)
+                }
+                return
+            }
+
+            waitForSpaceTransition(
+                sequenceID: sequenceID,
+                previousKey: previousKey,
+                targetKey: targetKey,
+                displayID: displayID,
+                attemptsRemaining: attemptsRemaining,
+                fallbackGoRight: fallbackGoRight,
+                startedAt: startedAt)
+        }
+    }
+
+    private static func scheduleSwipeWork(after delay: TimeInterval,
+                                          _ block: @escaping () -> Void) {
+        let item = DispatchWorkItem(block: block)
+        pendingSwipeWorkItems.append(item)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+    }
+
+    private static func cancelPendingSwipeSequence() {
         pendingSwipeWorkItems.forEach { $0.cancel() }
         pendingSwipeWorkItems = []
+    }
 
-        for attempt in 0..<maxAttempts {
-            let item = DispatchWorkItem {
-                if SpacesProvider.snapshot().activeKey == targetKey {
-                    pendingSwipeWorkItems = []
-                    return
-                }
-                postSwipeGesture(goRight: goRight)
-            }
-            pendingSwipeWorkItems.append(item)
-            DispatchQueue.main.asyncAfter(
-                deadline: .now() + swipeStepDelay * Double(attempt),
-                execute: item)
-        }
+    private static func finishSwipeSequence(sequenceID: Int) {
+        guard sequenceID == swipeSequenceID else { return }
+        cancelPendingSwipeSequence()
+        swipeSequenceID += 1
     }
 
     private static func postSwipeGesture(goRight: Bool) {
