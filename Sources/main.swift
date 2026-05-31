@@ -63,6 +63,7 @@ struct Space {
 struct Snapshot {
     let spaces: [Space]
     let activeKey: String?
+    let currentKeysByDisplay: [String: String]
 }
 
 // MARK: - Snapshot provider
@@ -76,6 +77,7 @@ enum SpacesProvider {
         var spaces: [Space] = []
         var activeByID64: String?
         var activeByPlistCurrent: String?
+        var currentKeysByDisplay: [String: String] = [:]
 
         for display in displays {
             let displayID = (display["Display Identifier"] as? String) ?? ""
@@ -94,9 +96,16 @@ enum SpacesProvider {
                 let uuid = (sp["uuid"] as? String) ?? ""
                 let id64 = (sp["id64"] as? NSNumber)?.uint64Value ?? 0
                 let managed = (sp["ManagedSpaceID"] as? NSNumber)?.intValue ?? -1
-                let key = !uuid.isEmpty
-                    ? uuid
-                    : "\(displayID):desktop:\(regular)"
+                let fallbackKey: String
+                if fullscreen {
+                    let stableID = managed >= 0
+                        ? String(managed)
+                        : (id64 != 0 ? String(id64) : String(spaces.count))
+                    fallbackKey = "\(displayID):fullscreen:\(stableID)"
+                } else {
+                    fallbackKey = "\(displayID):desktop:\(regular)"
+                }
+                let key = !uuid.isEmpty ? uuid : fallbackKey
 
                 let space = Space(
                     key: key, uuid: uuid, id64: id64, managedID: managed,
@@ -109,14 +118,23 @@ enum SpacesProvider {
                 if activeByID64 == nil, id64 != 0, id64 == activeID {
                     activeByID64 = key
                 }
+                if id64 != 0, id64 == activeID {
+                    currentKeysByDisplay[displayID] = key
+                }
                 let plistHit = (currentManaged.map { $0 == managed } ?? false)
                     || (currentUUID.map { !$0.isEmpty && $0 == uuid } ?? false)
                 if activeByPlistCurrent == nil, plistHit {
                     activeByPlistCurrent = key
                 }
+                if plistHit {
+                    currentKeysByDisplay[displayID] = key
+                }
             }
         }
-        return Snapshot(spaces: spaces, activeKey: activeByID64 ?? activeByPlistCurrent)
+        return Snapshot(
+            spaces: spaces,
+            activeKey: activeByID64 ?? activeByPlistCurrent,
+            currentKeysByDisplay: currentKeysByDisplay)
     }
 
     private static func plistFallback() -> [[String: Any]] {
@@ -259,6 +277,7 @@ enum SpaceSwitcher {
 
     private enum Phase {
         static let began: Int64 = 1
+        static let changed: Int64 = 2
         static let ended: Int64 = 4
     }
 
@@ -266,20 +285,21 @@ enum SpaceSwitcher {
     private static let horizontalMotion: Int64 = 1
     private static let swipeVelocity = 400.0
     private static let swipeProgress = 2.0
-    private static let swipeStepDelay: TimeInterval = 0.45
+    private static let swipeStepDelay: TimeInterval = 0.85
     private static var pendingSwipeWorkItems: [DispatchWorkItem] = []
 
     static func switchTo(space target: Space, in snapshot: Snapshot) -> SpaceSwitchResult {
-        guard let activeKey = snapshot.activeKey else { return .unavailable }
-        guard activeKey != target.key else { return .alreadyActive }
-        guard !target.isFullscreen else { return .unavailable }
+        guard let currentKey = snapshot.currentKeysByDisplay[target.displayID]
+            ?? snapshot.activeKey
+        else { return .unavailable }
+        guard currentKey != target.key else { return .alreadyActive }
         guard AXIsProcessTrusted() else { return .needsAccessibility }
 
         let displaySpaces = snapshot.spaces.filter { $0.displayID == target.displayID }
         let regularSpaces = displaySpaces.filter { !$0.isFullscreen }
-        let currentIndex = displaySpaces.firstIndex(where: { $0.key == activeKey })
+        let currentIndex = displaySpaces.firstIndex(where: { $0.key == currentKey })
         let targetIndex = displaySpaces.firstIndex(where: { $0.key == target.key })
-        let regularCurrentIndex = regularSpaces.firstIndex(where: { $0.key == activeKey })
+        let regularCurrentIndex = regularSpaces.firstIndex(where: { $0.key == currentKey })
         let regularTargetIndex = regularSpaces.firstIndex(where: { $0.key == target.key })
 
         let goRight: Bool
@@ -295,9 +315,9 @@ enum SpaceSwitcher {
             goRight = delta > 0
             minimumSteps = abs(delta)
         } else {
-            // A Dock swipe operates on the focused display. With one global
-            // activeKey, cross-display row clicks are intentionally unavailable
-            // instead of guessing which display macOS will route the gesture to.
+            // A Dock swipe operates on the focused display. If macOS does not
+            // report a current space for the target display, avoid guessing
+            // which display will receive the synthetic gesture.
             return .unavailable
         }
 
@@ -355,6 +375,28 @@ enum SpaceSwitcher {
 
         beginDock.post(tap: .cgSessionEventTap)
         beginGesture.post(tap: .cgSessionEventTap)
+
+        guard let changeGesture = CGEvent(source: nil),
+              let changeDock = CGEvent(source: nil)
+        else { return }
+
+        changeGesture.type = CGEventType(rawValue: UInt32(EventType.gesture))!
+        changeGesture.setIntegerValueField(Field.eventType, value: EventType.gesture)
+
+        changeDock.type = CGEventType(rawValue: UInt32(EventType.dockControl))!
+        changeDock.setIntegerValueField(Field.eventType, value: EventType.dockControl)
+        changeDock.setIntegerValueField(Field.gestureHIDType, value: hidTypeDockSwipe)
+        changeDock.setIntegerValueField(Field.gesturePhase, value: Phase.changed)
+        changeDock.setDoubleValueField(Field.gestureSwipeProgress, value: progress / 2)
+        changeDock.setIntegerValueField(Field.scrollGestureFlagBits, value: flagDirection)
+        changeDock.setIntegerValueField(Field.gestureSwipeMotion, value: horizontalMotion)
+        changeDock.setDoubleValueField(Field.gestureScrollY, value: 0)
+        changeDock.setDoubleValueField(Field.gestureSwipeVelocityX, value: velocity)
+        changeDock.setDoubleValueField(Field.gestureSwipeVelocityY, value: 0)
+        changeDock.setDoubleValueField(Field.gestureZoomDeltaX, value: Double(Float.leastNonzeroMagnitude))
+
+        changeDock.post(tap: .cgSessionEventTap)
+        changeGesture.post(tap: .cgSessionEventTap)
 
         guard let endGesture = CGEvent(source: nil),
               let endDock = CGEvent(source: nil)
@@ -421,6 +463,7 @@ final class NameStore {
 final class SpaceRowView: NSView {
     private let isActive: Bool
     private let canSwitch: Bool
+    private let canManage: Bool
     private let onSwitch: () -> Void
     private let onRename: () -> Void
     private let onDelete: () -> Void
@@ -433,12 +476,13 @@ final class SpaceRowView: NSView {
     private var isHovered = false
 
     init(name: String, iconImage: NSImage?,
-         isActive: Bool, canSwitch: Bool,
+         isActive: Bool, canSwitch: Bool, canManage: Bool,
          onSwitch: @escaping () -> Void,
          onRename: @escaping () -> Void,
          onDelete: @escaping () -> Void) {
         self.isActive = isActive
         self.canSwitch = canSwitch
+        self.canManage = canManage
         self.onSwitch = onSwitch
         self.onRename = onRename
         self.onDelete = onDelete
@@ -520,8 +564,11 @@ final class SpaceRowView: NSView {
     /// screen-space point. Called by both the NSView rightMouseDown override
     /// (when AppKit delivers it) and by the menu-scoped NSEvent monitor in
     /// AppDelegate (when AppKit doesn't, as on macOS Tahoe — see #11).
+    @discardableResult
     func showContextMenu(atScreenPoint screenPoint: NSPoint? = nil,
-                         from event: NSEvent? = nil) {
+                         from event: NSEvent? = nil) -> Bool {
+        guard canManage else { return false }
+
         let ctx = NSMenu()
         let rename = NSMenuItem(title: "Rename…",
                                 action: #selector(renameClicked),
@@ -545,6 +592,7 @@ final class SpaceRowView: NSView {
                 ?? NSPoint(x: 0, y: bounds.height)
             ctx.popUp(positioning: nil, at: origin, in: self)
         }
+        return true
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -791,7 +839,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func switchToSpace(atIndex index: Int) {
         let snap = SpacesProvider.snapshot()
         let grouped = Dictionary(
-            grouping: snap.spaces.filter { !$0.isFullscreen },
+            grouping: snap.spaces,
             by: { $0.displayID })
         let ordered = grouped.keys.sorted().flatMap { grouped[$0] ?? [] }
         guard index >= 0, index < ordered.count else { return }
@@ -882,19 +930,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 header.isEnabled = false
                 menu.addItem(header)
             }
-            for sp in (grouped[display] ?? []) where !sp.isFullscreen {
-                let baseName = store.displayName(for: sp)
-                let count = WindowCounter.count(forSpace: sp.id64)
-                let displayed = count > 0 ? "\(baseName) (\(count))" : baseName
-                let isActive = (sp.key == snap.activeKey)
+            for sp in grouped[display] ?? [] {
+                let currentKey = snap.currentKeysByDisplay[display] ?? snap.activeKey
+                let isActive = (sp.key == currentKey)
                 let dominantApp = dominantApp(for: sp, isActive: isActive)
+                let baseName: String
+                if sp.isFullscreen {
+                    if let appName = dominantApp?.localizedName, !appName.isEmpty {
+                        baseName = "\(appName) Full Screen"
+                    } else {
+                        baseName = sp.defaultName
+                    }
+                } else {
+                    baseName = store.displayName(for: sp)
+                }
+                let count = sp.isFullscreen ? 0 : WindowCounter.count(forSpace: sp.id64)
+                let displayed = count > 0 ? "\(baseName) (\(count))" : baseName
                 let canSwitch = !sp.displayID.isEmpty && sp.id64 != 0
+                let canManage = !sp.isFullscreen && sp.id64 != 0
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
                     name: displayed,
                     iconImage: dominantApp?.icon,
                     isActive: isActive,
                     canSwitch: canSwitch,
+                    canManage: canManage,
                     onSwitch: { [weak self] in self?.switchTo(space: sp) },
                     onRename: { [weak self] in self?.promptRename(key: sp.key) },
                     onDelete: { [weak self] in self?.confirmDelete(space: sp, name: baseName) }
