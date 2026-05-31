@@ -266,7 +266,7 @@ enum SpaceSwitcher {
     private static let horizontalMotion: Int64 = 1
     private static let swipeVelocity = 400.0
     private static let swipeProgress = 2.0
-    private static let swipeStepDelay: TimeInterval = 0.35
+    private static let swipeStepDelay: TimeInterval = 0.45
     private static var pendingSwipeWorkItems: [DispatchWorkItem] = []
 
     static func switchTo(space target: Space, in snapshot: Snapshot) -> SpaceSwitchResult {
@@ -276,19 +276,33 @@ enum SpaceSwitcher {
         guard AXIsProcessTrusted() else { return .needsAccessibility }
 
         let displaySpaces = snapshot.spaces.filter { $0.displayID == target.displayID }
-        guard let currentIndex = displaySpaces.firstIndex(where: { $0.key == activeKey }),
-              let targetIndex = displaySpaces.firstIndex(where: { $0.key == target.key })
-        else {
+        let regularSpaces = displaySpaces.filter { !$0.isFullscreen }
+        let currentIndex = displaySpaces.firstIndex(where: { $0.key == activeKey })
+        let targetIndex = displaySpaces.firstIndex(where: { $0.key == target.key })
+        let regularCurrentIndex = regularSpaces.firstIndex(where: { $0.key == activeKey })
+        let regularTargetIndex = regularSpaces.firstIndex(where: { $0.key == target.key })
+
+        let goRight: Bool
+        let minimumSteps: Int
+        if let currentIndex, let targetIndex {
+            let delta = targetIndex - currentIndex
+            guard delta != 0 else { return .alreadyActive }
+            goRight = delta > 0
+            minimumSteps = abs(delta)
+        } else if let regularCurrentIndex, let regularTargetIndex {
+            let delta = regularTargetIndex - regularCurrentIndex
+            guard delta != 0 else { return .alreadyActive }
+            goRight = delta > 0
+            minimumSteps = abs(delta)
+        } else {
             // A Dock swipe operates on the focused display. With one global
             // activeKey, cross-display row clicks are intentionally unavailable
             // instead of guessing which display macOS will route the gesture to.
             return .unavailable
         }
 
-        let delta = targetIndex - currentIndex
-        guard delta != 0 else { return .alreadyActive }
-
-        postSwipeSequence(steps: abs(delta), goRight: delta > 0)
+        let maxAttempts = max(minimumSteps + 6, displaySpaces.count + 3)
+        postSwipeSequence(targetKey: target.key, maxAttempts: maxAttempts, goRight: goRight)
         return .switched
     }
 
@@ -297,17 +311,23 @@ enum SpaceSwitcher {
         _ = AXIsProcessTrustedWithOptions(options)
     }
 
-    private static func postSwipeSequence(steps: Int, goRight: Bool) {
+    private static func postSwipeSequence(targetKey: String,
+                                          maxAttempts: Int,
+                                          goRight: Bool) {
         pendingSwipeWorkItems.forEach { $0.cancel() }
         pendingSwipeWorkItems = []
 
-        for step in 0..<steps {
+        for attempt in 0..<maxAttempts {
             let item = DispatchWorkItem {
+                if SpacesProvider.snapshot().activeKey == targetKey {
+                    pendingSwipeWorkItems = []
+                    return
+                }
                 postSwipeGesture(goRight: goRight)
             }
             pendingSwipeWorkItems.append(item)
             DispatchQueue.main.asyncAfter(
-                deadline: .now() + swipeStepDelay * Double(step),
+                deadline: .now() + swipeStepDelay * Double(attempt),
                 execute: item)
         }
     }
