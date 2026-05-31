@@ -225,22 +225,120 @@ enum DominantAppFinder {
     }
 }
 
-// MARK: - Mission Control launcher (public API only)
+// MARK: - Space switching
 
-/// Tahoe broke the private `(CGS|SLS)ManagedDisplaySetCurrentSpace` switch
-/// path — calling it doesn't actually move the active space, it just
-/// activates whatever app is on the target space, which surfaces those
-/// app windows on top of the current space's content (the symptom the
-/// user reports). Until a working zero-permission switch path is found
-/// (without Accessibility, which we want to avoid), the best UX is to
-/// open Mission Control and let the user click the space they want.
-enum MissionControl {
-    static func open() {
-        let url = URL(fileURLWithPath: "/System/Applications/Mission Control.app")
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-        NSWorkspace.shared.openApplication(at: url, configuration: config,
-                                           completionHandler: nil)
+enum SpaceSwitchResult {
+    case switched
+    case alreadyActive
+    case needsAccessibility
+    case unavailable
+}
+
+/// Switches spaces by posting synthetic Dock swipe gestures. The direct
+/// `(CGS|SLS)ManagedDisplaySetCurrentSpace` path is intentionally avoided:
+/// on Tahoe it only changes WindowServer bookkeeping and can surface the
+/// target space windows over the current desktop without moving spaces.
+enum SpaceSwitcher {
+    private enum Field {
+        static let eventType = CGEventField(rawValue: 55)!
+        static let gestureHIDType = CGEventField(rawValue: 110)!
+        static let gestureScrollY = CGEventField(rawValue: 119)!
+        static let gestureSwipeMotion = CGEventField(rawValue: 123)!
+        static let gestureSwipeProgress = CGEventField(rawValue: 124)!
+        static let gestureSwipeVelocityX = CGEventField(rawValue: 129)!
+        static let gestureSwipeVelocityY = CGEventField(rawValue: 130)!
+        static let gesturePhase = CGEventField(rawValue: 132)!
+        static let scrollGestureFlagBits = CGEventField(rawValue: 135)!
+        static let gestureZoomDeltaX = CGEventField(rawValue: 139)!
+    }
+
+    private enum EventType {
+        static let gesture: Int64 = 29
+        static let dockControl: Int64 = 30
+    }
+
+    private enum Phase {
+        static let began: Int64 = 1
+        static let ended: Int64 = 4
+    }
+
+    private static let hidTypeDockSwipe: Int64 = 23
+    private static let horizontalMotion: Int64 = 1
+    private static let swipeVelocity = 400.0
+    private static let swipeProgress = 2.0
+
+    static func switchTo(space target: Space, in snapshot: Snapshot) -> SpaceSwitchResult {
+        guard let activeKey = snapshot.activeKey else { return .unavailable }
+        guard activeKey != target.key else { return .alreadyActive }
+        guard AXIsProcessTrusted() else { return .needsAccessibility }
+
+        let displaySpaces = snapshot.spaces.filter {
+            !$0.isFullscreen && $0.displayID == target.displayID
+        }
+        guard let currentIndex = displaySpaces.firstIndex(where: { $0.key == activeKey }),
+              let targetIndex = displaySpaces.firstIndex(where: { $0.key == target.key })
+        else { return .unavailable }
+
+        let delta = targetIndex - currentIndex
+        guard delta != 0 else { return .alreadyActive }
+
+        let goRight = delta > 0
+        for _ in 0..<abs(delta) {
+            postSwipeGesture(goRight: goRight)
+        }
+        return .switched
+    }
+
+    static func requestAccessibilityPermission() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+    }
+
+    private static func postSwipeGesture(goRight: Bool) {
+        let flagDirection: Int64 = goRight ? 1 : 0
+        let progress = goRight ? swipeProgress : -swipeProgress
+        let velocity = goRight ? swipeVelocity : -swipeVelocity
+
+        guard let beginGesture = CGEvent(source: nil),
+              let beginDock = CGEvent(source: nil)
+        else { return }
+
+        beginGesture.type = CGEventType(rawValue: UInt32(EventType.gesture))!
+        beginGesture.setIntegerValueField(Field.eventType, value: EventType.gesture)
+
+        beginDock.type = CGEventType(rawValue: UInt32(EventType.dockControl))!
+        beginDock.setIntegerValueField(Field.eventType, value: EventType.dockControl)
+        beginDock.setIntegerValueField(Field.gestureHIDType, value: hidTypeDockSwipe)
+        beginDock.setIntegerValueField(Field.gesturePhase, value: Phase.began)
+        beginDock.setIntegerValueField(Field.scrollGestureFlagBits, value: flagDirection)
+        beginDock.setIntegerValueField(Field.gestureSwipeMotion, value: horizontalMotion)
+        beginDock.setDoubleValueField(Field.gestureScrollY, value: 0)
+        beginDock.setDoubleValueField(Field.gestureZoomDeltaX, value: Double(Float.leastNonzeroMagnitude))
+
+        beginDock.post(tap: .cgSessionEventTap)
+        beginGesture.post(tap: .cgSessionEventTap)
+
+        guard let endGesture = CGEvent(source: nil),
+              let endDock = CGEvent(source: nil)
+        else { return }
+
+        endGesture.type = CGEventType(rawValue: UInt32(EventType.gesture))!
+        endGesture.setIntegerValueField(Field.eventType, value: EventType.gesture)
+
+        endDock.type = CGEventType(rawValue: UInt32(EventType.dockControl))!
+        endDock.setIntegerValueField(Field.eventType, value: EventType.dockControl)
+        endDock.setIntegerValueField(Field.gestureHIDType, value: hidTypeDockSwipe)
+        endDock.setIntegerValueField(Field.gesturePhase, value: Phase.ended)
+        endDock.setDoubleValueField(Field.gestureSwipeProgress, value: progress)
+        endDock.setIntegerValueField(Field.scrollGestureFlagBits, value: flagDirection)
+        endDock.setIntegerValueField(Field.gestureSwipeMotion, value: horizontalMotion)
+        endDock.setDoubleValueField(Field.gestureScrollY, value: 0)
+        endDock.setDoubleValueField(Field.gestureSwipeVelocityX, value: velocity)
+        endDock.setDoubleValueField(Field.gestureSwipeVelocityY, value: 0)
+        endDock.setDoubleValueField(Field.gestureZoomDeltaX, value: Double(Float.leastNonzeroMagnitude))
+
+        endDock.post(tap: .cgSessionEventTap)
+        endGesture.post(tap: .cgSessionEventTap)
     }
 }
 
@@ -607,6 +705,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastActiveKey: String?
     private var editorWindow: NSWindow?
     private var editorFields: [(key: String, field: NSTextField)] = []
+    private var hasShownSwitchPermissionAlert = false
     private let updaterController = SPUStandardUpdaterController(
         startingUpdater: true,
         updaterDelegate: nil,
@@ -643,10 +742,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hotkeys = GlobalHotkeys { [weak self] index in
             self?.switchToSpace(atIndex: index)
         }
-        // Registration is gated until the underlying space-switch path is
-        // confirmed working on macOS Tahoe (see #10). Until then, reserving
-        // ⌃⌥⌘1..9 system-wide would silently consume those shortcuts without
-        // delivering the user-visible action. Power users can opt in via:
+        // Registration is opt-in because the switch path requires the app to
+        // have Accessibility permission. Power users can opt in via:
         //   defaults write local.spacesmanager enableGlobalHotkeys -bool YES
         if UserDefaults.standard.bool(forKey: "enableGlobalHotkeys") {
             hotkeys?.register()
@@ -814,15 +911,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func switchTo(space: Space) {
-        // The private direct-switch APIs (CGS/SLSManagedDisplaySetCurrentSpace)
-        // no longer move the active space on macOS Tahoe — calling them just
-        // activates whatever app is on the target space, which surfaces those
-        // windows on top of the current space's content. Routing through
-        // Mission Control is the only reliable zero-permission switch on
-        // current macOS: one click opens Mission Control, a second click on
-        // the target thumbnail does the actual move. See #10.
-        _ = space  // accepted but unused while we don't have a direct path
-        MissionControl.open()
+        let snap = SpacesProvider.snapshot()
+        switch SpaceSwitcher.switchTo(space: space, in: snap) {
+        case .switched, .alreadyActive:
+            break
+        case .needsAccessibility:
+            requestSwitchAccessibility()
+        case .unavailable:
+            NSSound.beep()
+        }
+    }
+
+    private func requestSwitchAccessibility() {
+        guard !AXIsProcessTrusted() else { return }
+        guard !hasShownSwitchPermissionAlert else {
+            SpaceSwitcher.requestAccessibilityPermission()
+            return
+        }
+
+        hasShownSwitchPermissionAlert = true
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Allow SpacesManager to switch spaces"
+        alert.informativeText = "Click-to-switch uses macOS Accessibility permission to send the same Dock swipe event as a trackpad space switch. SpacesManager does not need Screen Recording or SIP changes."
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            SpaceSwitcher.requestAccessibilityPermission()
+        }
     }
 
     func confirmDelete(space: Space, name: String) {
