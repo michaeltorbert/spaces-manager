@@ -17,8 +17,11 @@ func CGSGetActiveSpace(_ cid: CGSConnectionID) -> CGSSpaceID
 @_silgen_name("CGSCopyManagedDisplaySpaces")
 func CGSCopyManagedDisplaySpaces(_ cid: CGSConnectionID) -> CFArray
 
-@_silgen_name("CGSManagedDisplaySetCurrentSpace")
-func CGSManagedDisplaySetCurrentSpace(_ cid: CGSConnectionID,
+// SLS variant of the space-switch call. On recent macOS the CGS-prefixed
+// alias has been progressively neutered — see #10. The SLS-prefixed symbol
+// is what newer SkyLight clients call.
+@_silgen_name("SLSManagedDisplaySetCurrentSpace")
+func SLSManagedDisplaySetCurrentSpace(_ cid: CGSConnectionID,
                                        _ display: CFString,
                                        _ space: CGSSpaceID)
 
@@ -230,18 +233,6 @@ enum DominantAppFinder {
     }
 }
 
-// MARK: - Mission Control launcher (public API only)
-
-enum MissionControl {
-    static func open() {
-        let url = URL(fileURLWithPath: "/System/Applications/Mission Control.app")
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-        NSWorkspace.shared.openApplication(at: url, configuration: config,
-                                           completionHandler: nil)
-    }
-}
-
 // MARK: - Name store
 
 final class NameStore {
@@ -289,6 +280,7 @@ final class SpaceRowView: NSView {
 
     private let iconView = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
+    private let actionsButton = NSButton()
     private let checkmark = NSImageView()
 
     private var trackingArea: NSTrackingArea?
@@ -336,6 +328,23 @@ final class SpaceRowView: NSView {
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(nameLabel)
 
+        // Always-visible "actions" button. Click opens a popup menu with
+        // Rename / Delete — discoverable per-row access that doesn't depend
+        // on rightMouseDown being delivered to a custom NSMenuItem.view
+        // (which has been unreliable on macOS Tahoe — see #11).
+        actionsButton.image = NSImage(systemSymbolName: "ellipsis.circle",
+                                      accessibilityDescription: "Space actions")
+        actionsButton.imageScaling = .scaleProportionallyDown
+        actionsButton.contentTintColor = .secondaryLabelColor
+        actionsButton.isBordered = false
+        actionsButton.bezelStyle = .smallSquare
+        actionsButton.target = self
+        actionsButton.action = #selector(actionsClicked(_:))
+        actionsButton.setButtonType(.momentaryChange)
+        actionsButton.toolTip = "Rename or delete this space"
+        actionsButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(actionsButton)
+
         checkmark.image = NSImage(systemSymbolName: "checkmark",
                                   accessibilityDescription: nil)
         checkmark.contentTintColor = .controlAccentColor
@@ -351,7 +360,12 @@ final class SpaceRowView: NSView {
 
             nameLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
             nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: checkmark.leadingAnchor, constant: -8),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: actionsButton.leadingAnchor, constant: -6),
+
+            actionsButton.trailingAnchor.constraint(equalTo: checkmark.leadingAnchor, constant: -6),
+            actionsButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            actionsButton.widthAnchor.constraint(equalToConstant: 18),
+            actionsButton.heightAnchor.constraint(equalToConstant: 18),
 
             checkmark.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             checkmark.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -381,11 +395,41 @@ final class SpaceRowView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        // Ignore mouse-up that originated inside the actions button —
+        // NSButton's own click handler runs that path.
+        let local = convert(event.locationInWindow, from: nil)
+        if actionsButton.frame.contains(local) { return }
         enclosingMenuItem?.menu?.cancelTracking()
         if canSwitch && !isActive { onSwitch() }
     }
 
+    @objc private func actionsClicked(_ sender: NSButton) {
+        showActionsMenu(from: sender)
+    }
+
+    private func showActionsMenu(from anchor: NSView) {
+        let ctx = NSMenu()
+        let rename = NSMenuItem(title: "Rename…",
+                                action: #selector(renameClicked),
+                                keyEquivalent: "")
+        rename.target = self
+        ctx.addItem(rename)
+
+        let delete = NSMenuItem(title: "Delete Space…",
+                                action: #selector(deleteClicked),
+                                keyEquivalent: "")
+        delete.target = self
+        ctx.addItem(delete)
+
+        // Anchor under the bottom-left of the button.
+        let origin = NSPoint(x: 0, y: anchor.bounds.height + 2)
+        ctx.popUp(positioning: nil, at: origin, in: anchor)
+    }
+
     override func rightMouseDown(with event: NSEvent) {
+        // Tahoe doesn't always deliver this to a custom NSMenuItem.view —
+        // the actions button is the primary entry point. This stays as a
+        // bonus path for installs where it still works.
         let ctx = NSMenu()
         let rename = NSMenuItem(title: "Rename…",
                                 action: #selector(renameClicked),
@@ -692,8 +736,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let baseName = store.displayName(for: sp)
                 let count = WindowCounter.count(forSpace: sp.id64)
                 let displayed = count > 0 ? "\(baseName) (\(count))" : baseName
-                let dominantApp = DominantAppFinder.find(forSpace: sp.id64)
                 let isActive = (sp.key == snap.activeKey)
+                let dominantApp = dominantApp(for: sp, isActive: isActive)
                 let canSwitch = !sp.displayID.isEmpty && sp.id64 != 0
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
@@ -723,12 +767,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         renameAll.target = self
         menu.addItem(renameAll)
 
-        let addSpace = NSMenuItem(title: "Add New Space (opens Mission Control)",
-                                  action: #selector(addNewSpace),
-                                  keyEquivalent: "")
-        addSpace.target = self
-        menu.addItem(addSpace)
-
         menu.addItem(NSMenuItem.separator())
 
         let checkForUpdates = NSMenuItem(
@@ -745,11 +783,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(quit)
     }
 
+    /// "Dominant app" for a row. For the active space we prefer the currently
+    /// frontmost app (when it's a regular app) — that matches what the user
+    /// thinks of as "the app they're using on this space" and avoids cases
+    /// where a multi-window app (e.g. Safari with many tab windows) drowns
+    /// out a single-window app the user is actually working in. For inactive
+    /// spaces we fall back to the most-windowed-owner heuristic.
+    private func dominantApp(for space: Space, isActive: Bool) -> NSRunningApplication? {
+        if isActive,
+           let front = NSWorkspace.shared.frontmostApplication,
+           front.activationPolicy == .regular,
+           front.processIdentifier != getpid() {
+            return front
+        }
+        return DominantAppFinder.find(forSpace: space.id64)
+    }
+
     private func switchTo(space: Space) {
         guard !space.displayID.isEmpty, space.id64 != 0 else { return }
-        CGSManagedDisplaySetCurrentSpace(CGSMainConnectionID(),
+        let cid = CGSMainConnectionID()
+        let before = CGSGetActiveSpace(cid)
+        SLSManagedDisplaySetCurrentSpace(cid,
                                          space.displayID as CFString,
                                          space.id64)
+        // The private switch APIs have been progressively neutered on recent
+        // macOS — verify the call actually moved the active space. If it
+        // didn't, surface that in the HUD instead of silently no-op'ing
+        // (the user's row click otherwise looks like nothing happened).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self else { return }
+            let after = CGSGetActiveSpace(cid)
+            if after != space.id64, after == before {
+                self.hud.show(text: "Switch unavailable on this macOS")
+            }
+        }
     }
 
     func confirmDelete(space: Space, name: String) {
@@ -797,13 +864,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             store.setName(trimmed, for: key)
             updateStatusTitle()
         }
-    }
-
-    @objc func addNewSpace() {
-        // Tahoe removed the private SLSAddSpacesToManagedDisplay symbol, so we
-        // can't attach a programmatically-created space anymore. Instead, open
-        // Mission Control so the user can click + in the top-right corner.
-        MissionControl.open()
     }
 
     @objc func renameAllSpaces() {
