@@ -717,25 +717,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         renameCurrent.target = self
         menu.addItem(renameCurrent)
 
-        let management = NSMenuItem(title: "Space Management",
-                                    action: nil,
-                                    keyEquivalent: "")
-        let managementMenu = NSMenu(title: "Space Management")
-
         let renameAll = NSMenuItem(title: "Rename All Spaces…",
                                    action: #selector(renameAllSpaces),
                                    keyEquivalent: "")
         renameAll.target = self
-        managementMenu.addItem(renameAll)
+        menu.addItem(renameAll)
 
-        let openMissionControl = NSMenuItem(title: "Open Mission Control…",
+        let more = NSMenuItem(title: "More",
+                              action: nil,
+                              keyEquivalent: "")
+        let moreMenu = NSMenu(title: "More")
+
+        let openMissionControl = NSMenuItem(title: "Open Mission Control",
                                             action: #selector(openMissionControl),
                                             keyEquivalent: "")
         openMissionControl.target = self
-        managementMenu.addItem(openMissionControl)
+        moreMenu.addItem(openMissionControl)
 
-        management.submenu = managementMenu
-        menu.addItem(management)
+        more.submenu = moreMenu
+        menu.addItem(more)
 
         menu.addItem(NSMenuItem.separator())
 
