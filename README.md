@@ -17,7 +17,6 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 - **Brief HUD** fades in at the top of the screen on every space switch, showing the name.
 - **Rename Current Space…** quick action in the menu.
 - **Rename All Spaces…** opens a window for bulk editing.
-- **Add New Space** opens Mission Control so you can click `+` (Apple removed the programmatic-add private API on Tahoe — see [Tahoe findings](#tahoe-private-api-findings)).
 - **Names persist** in `UserDefaults` under bundle id `local.spacesmanager`, keyed by each space's UUID (or a stable per-display fallback key when macOS returns an empty UUID).
 - **Self-updates** via Sparkle: a daily background check + a "Check for Updates…" menu item. Updates are verified with an EdDSA signature embedded in the app; only releases signed with the matching private key will install.
 
@@ -106,7 +105,7 @@ Probed against macOS 26.3.1 (Tahoe) on Apple Silicon, here's what I found:
 
 | Symbol | Was used for | Workaround |
 |---|---|---|
-| `SLSAddSpacesToManagedDisplay` / `CGSAddSpacesToManagedDisplay` | attaching a created space to a display | gone — `SLSSpaceCreate` still works but the created space can't be made visible, so the programmatic-add path is effectively dead. SpacesManager opens Mission Control via `NSWorkspace.openApplication` so the user can click `+`. |
+| `SLSAddSpacesToManagedDisplay` / `CGSAddSpacesToManagedDisplay` | attaching a created space to a display | gone — `SLSSpaceCreate` still works but the created space can't be made visible, so the programmatic-add path is effectively dead. To create a new space, open Mission Control yourself (F3 / gesture / Spotlight) and click `+`. |
 | `CoreDockSendNotification` in `Dock.framework` | opening Mission Control / Expose without keypress | the `Dock.framework` private bundle no longer exists at the old path. Use `NSWorkspace.openApplication(at: "/System/Applications/Mission Control.app")` instead. |
 
 These results are from a runtime `dlsym` probe; if you're on a different macOS version, results may differ.
@@ -131,7 +130,7 @@ SpacesManager takes the opposite tradeoff: stable UUID-keyed naming and an unlim
 | macOS | Status |
 |---|---|
 | 26 (Tahoe) | ✓ developed and tested here |
-| 13–15 (Ventura → Sequoia) | should work; identical APIs except `Add New Space` may use the now-missing attach symbol if you patch it back in for older systems |
+| 13–15 (Ventura → Sequoia) | should work; identical APIs except programmatic space creation may use the now-missing attach symbol if you patch it back in for older systems |
 | 12 (Monterey) and earlier | `LSMinimumSystemVersion` is set to 13; build target can be lowered |
 
 If you try it on another version, PRs with findings are welcome.
