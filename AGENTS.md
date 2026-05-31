@@ -38,6 +38,13 @@ Keep implementation and review roles separate. Codex should not push fixes to a
 Claude-authored PR unless the user explicitly asks Codex to take over the
 implementation work.
 
+When Codex reviews a pull request:
+- Submit the formal GitHub PR review using `codex-bot-mt[bot]`.
+- Also leave a short top-level PR conversation comment summarizing the review
+  result for human visibility.
+- Link the top-level comment to the formal review and any key inline
+  discussion.
+
 ## Build & smoke test
 
 ```sh
