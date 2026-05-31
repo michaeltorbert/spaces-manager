@@ -379,15 +379,18 @@ enum SpaceSwitcher {
 
         let displaySpaces = snapshot.spaces.filter { $0.displayID == displayID }
         let goRight: Bool
+        let stepDistance: Int
         if let currentIndex = displaySpaces.firstIndex(where: { $0.key == currentKey }),
            let targetIndex = displaySpaces.firstIndex(where: { $0.key == targetKey }),
            currentIndex != targetIndex {
             goRight = targetIndex > currentIndex
+            stepDistance = abs(targetIndex - currentIndex)
         } else {
             goRight = fallbackGoRight
+            stepDistance = 1
         }
 
-        postSwipeGesture(goRight: goRight)
+        postSwipeGesture(goRight: goRight, steps: stepDistance)
         waitForSpaceTransition(
             sequenceID: sequenceID,
             previousKey: currentKey,
@@ -469,10 +472,11 @@ enum SpaceSwitcher {
         swipeSequenceID += 1
     }
 
-    private static func postSwipeGesture(goRight: Bool) {
+    private static func postSwipeGesture(goRight: Bool, steps: Int = 1) {
         let flagDirection: Int64 = goRight ? 1 : 0
-        let progress = goRight ? swipeProgress : -swipeProgress
-        let velocity = goRight ? swipeVelocity : -swipeVelocity
+        let magnitude = Double(max(1, steps))
+        let progress = (goRight ? swipeProgress : -swipeProgress) * magnitude
+        let velocity = (goRight ? swipeVelocity : -swipeVelocity) * magnitude
 
         guard let beginGesture = CGEvent(source: nil),
               let beginDock = CGEvent(source: nil)
