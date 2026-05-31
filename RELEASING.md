@@ -9,6 +9,17 @@ git push origin v1.0.1
 
 CI does the rest. Installed copies pick up the new release on their next daily check, or immediately via **Check for Updates…** in the status menu.
 
+## When to cut a release
+
+Cut a new tag any time `main` has shipped user-visible changes you want installed copies to pick up — typically right after merging a PR or a batch of PRs. The cadence is one tag per round of merges, not per commit:
+
+1. Merge the PR(s) into `main`.
+2. Pull `main` locally.
+3. Pick the next semver bump (patch for fixes, minor for features, major for breaks).
+4. `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+If `main` has moved but no tag has been pushed, installed users are still on the previous release no matter how many PRs landed. The Info.plist in source (`1.0` / `1`) stays as placeholders forever; the actual version users see comes from the tag the workflow processes.
+
 ## What the release workflow does
 
 Triggered by any `v*` tag push. See [.github/workflows/release.yml](.github/workflows/release.yml).
@@ -49,6 +60,20 @@ git tag -d v1.0.1                    # remove the local tag
 ```
 
 Then fix the issue on `main`, re-tag, and push the new tag. The next successful workflow run pushes a corrected `appcast.xml` to `gh-pages` and installed clients pick up the next valid release.
+
+## Local dev builds and Sparkle
+
+The release workflow sets `CFBundleVersion` to `git rev-list --count HEAD` (currently in the double digits). A vanilla `./build.sh` would otherwise leave the placeholder `1` in `Info.plist`, and Sparkle would happily decide the released version is newer than the locally-running build and silently replace the binary on its next scheduled check (default daily). You'd then test what looks like your new code but is actually the released v1.0.0 underneath.
+
+`build.sh` works around this: when it detects no `$CI` environment variable, it bumps `CFBundleVersion` to `9999999` after copying `Info.plist` into the bundle. Released builds (run by the workflow with `CI=true`) are unaffected and still use the rev-list value.
+
+If you're testing a build that was created before this guard existed, or you want a belt-and-suspenders approach, you can also disable Sparkle's auto-checks for your installed copy:
+
+```sh
+defaults write local.spacesmanager SUEnableAutomaticChecks -bool NO
+```
+
+That writes to the user's preferences and takes effect immediately; restore with `-bool YES` (or `defaults delete local.spacesmanager SUEnableAutomaticChecks`) when you want auto-updates back.
 
 ## One-time setup (already done)
 

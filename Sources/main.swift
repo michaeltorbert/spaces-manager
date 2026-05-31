@@ -296,7 +296,7 @@ final class SpaceRowView: NSView {
     private var trackingArea: NSTrackingArea?
     private var isHovered = false
 
-    init(name: String, subtitle: String?, iconImage: NSImage?,
+    init(name: String, iconImage: NSImage?,
          isActive: Bool, canSwitch: Bool,
          onSwitch: @escaping () -> Void,
          onRename: @escaping () -> Void,
@@ -322,18 +322,11 @@ final class SpaceRowView: NSView {
         iconView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(iconView)
 
-        let menuFont = NSFont.menuFont(ofSize: 0)
-        let attr = NSMutableAttributedString(string: name, attributes: [
-            .foregroundColor: NSColor.labelColor,
-            .font: menuFont,
-        ])
-        if let subtitle, !subtitle.isEmpty {
-            attr.append(NSAttributedString(string: " · \(subtitle)", attributes: [
-                .foregroundColor: NSColor.secondaryLabelColor,
-                .font: menuFont,
-            ]))
-        }
-        nameLabel.attributedStringValue = attr
+        nameLabel.stringValue = name
+        nameLabel.font = .menuFont(ofSize: 0)
+        nameLabel.textColor = .labelColor
+        nameLabel.usesSingleLineMode = true
+        nameLabel.maximumNumberOfLines = 1
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(nameLabel)
@@ -764,7 +757,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
                     name: displayed,
-                    subtitle: dominantApp?.localizedName,
                     iconImage: dominantApp?.icon,
                     isActive: isActive,
                     canSwitch: canSwitch,

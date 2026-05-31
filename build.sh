@@ -45,6 +45,14 @@ swiftc -O \
 
 cp Info.plist "$APP/Contents/Info.plist"
 
+# Local dev builds: pin CFBundleVersion well above any release value so
+# Sparkle's auto-update doesn't silently swap this binary out for a
+# released one mid-test. The release workflow sets its own version from
+# `git rev-list --count HEAD` and runs with $CI set, so it's unaffected.
+if [ -z "${CI:-}" ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 9999999" "$APP/Contents/Info.plist"
+fi
+
 # Copy Sparkle.framework into the bundle, preserving symlinks.
 ditto "$VENDORED_SPARKLE" "$APP_FRAMEWORKS/Sparkle.framework"
 
