@@ -25,6 +25,30 @@ func CGSManagedDisplaySetCurrentSpace(_ cid: CGSConnectionID,
 @_silgen_name("CGSSpaceDestroy")
 func CGSSpaceDestroy(_ cid: CGSConnectionID, _ space: CGSSpaceID)
 
+@_silgen_name("SLSCopyWindowsWithOptionsAndTags")
+func SLSCopyWindowsWithOptionsAndTags(_ cid: CGSConnectionID,
+                                       _ owner: UInt32,
+                                       _ spaces: CFArray,
+                                       _ options: UInt32,
+                                       _ setTags: UnsafeMutablePointer<UInt64>,
+                                       _ clearTags: UnsafeMutablePointer<UInt64>) -> CFArray?
+
+// Returns the owner's WindowServer connection ID (not a PID), via the out param.
+@_silgen_name("SLSGetWindowOwner")
+func SLSGetWindowOwner(_ cid: CGSConnectionID,
+                        _ windowID: UInt32,
+                        _ ownerConnection: UnsafeMutablePointer<Int32>) -> Int32
+
+// Resolves a WindowServer connection ID to the owning process's PID.
+@_silgen_name("SLSConnectionGetPID")
+func SLSConnectionGetPID(_ ownerConnection: Int32,
+                          _ pid: UnsafeMutablePointer<pid_t>) -> Int32
+
+@_silgen_name("SLSGetWindowLevel")
+func SLSGetWindowLevel(_ cid: CGSConnectionID,
+                        _ windowID: UInt32,
+                        _ level: UnsafeMutablePointer<Int32>) -> Int32
+
 // MARK: - Space model
 
 struct Space {
@@ -108,6 +132,64 @@ enum SpacesProvider {
                 "SpacesDisplayConfiguration.Management Data.Monitors") as? [[String: Any]]
         else { return [] }
         return monitors
+    }
+}
+
+// MARK: - Window counts per space
+
+enum WindowCounter {
+    /// Count of on-screen, normal-level windows on the given space that are
+    /// owned by a regular (Dock-visible) app. Mirrors Mission Control's notion
+    /// of "windows on this space" by filtering out:
+    ///   - off-screen / minimized windows (via SLS options=2),
+    ///   - utility / menu / dock / panel windows (via window level != 0),
+    ///   - daemons, agents, and our own process (via NSRunningApplication
+    ///     activationPolicy != .regular).
+    /// Returns 0 if the space ID is unknown or the private API calls fail.
+    static func count(forSpace id64: CGSSpaceID) -> Int {
+        guard id64 != 0 else { return 0 }
+        let cid = CGSMainConnectionID()
+        let spaces = [NSNumber(value: id64)] as CFArray
+        var setTags: UInt64 = 0
+        var clearTags: UInt64 = 0
+        guard let windows = SLSCopyWindowsWithOptionsAndTags(
+            cid, 0, spaces, 2, &setTags, &clearTags) as? [Int]
+        else { return 0 }
+
+        let ourPid = getpid()
+        var appCache: [pid_t: NSRunningApplication?] = [:]
+        var count = 0
+        for wid in windows {
+            // Filter by window level — keep only normal app windows
+            // (kCGNormalWindowLevel = 0). Excludes status bar, dock, menus,
+            // tooltips, floating panels, sticky overlays, etc.
+            var level: Int32 = 0
+            guard SLSGetWindowLevel(cid, UInt32(wid), &level) == 0,
+                  level == 0
+            else { continue }
+
+            // Resolve owner: window → owner WindowServer connection → PID
+            // → NSRunningApplication. Only count windows owned by a regular
+            // (Dock-visible) app.
+            var ownerCID: Int32 = 0
+            guard SLSGetWindowOwner(cid, UInt32(wid), &ownerCID) == 0
+            else { continue }
+            var pid: pid_t = 0
+            guard SLSConnectionGetPID(ownerCID, &pid) == 0,
+                  pid > 1, pid != ourPid
+            else { continue }
+            let app: NSRunningApplication?
+            if let cached = appCache[pid] {
+                app = cached
+            } else {
+                app = NSRunningApplication(processIdentifier: pid)
+                appCache[pid] = app
+            }
+            guard let app, app.activationPolicy == .regular else { continue }
+
+            count += 1
+        }
+        return count
     }
 }
 
@@ -554,17 +636,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 menu.addItem(header)
             }
             for sp in (grouped[display] ?? []) where !sp.isFullscreen {
-                let name = store.displayName(for: sp)
+                let baseName = store.displayName(for: sp)
+                let count = WindowCounter.count(forSpace: sp.id64)
+                let displayed = count > 0 ? "\(baseName) (\(count))" : baseName
                 let isActive = (sp.key == snap.activeKey)
                 let canSwitch = !sp.displayID.isEmpty && sp.id64 != 0
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
-                    name: name,
+                    name: displayed,
                     isActive: isActive,
                     canSwitch: canSwitch,
                     onSwitch: { [weak self] in self?.switchTo(space: sp) },
                     onRename: { [weak self] in self?.promptRename(key: sp.key) },
-                    onDelete: { [weak self] in self?.confirmDelete(space: sp, name: name) }
+                    onDelete: { [weak self] in self?.confirmDelete(space: sp, name: baseName) }
                 )
                 menu.addItem(item)
             }
