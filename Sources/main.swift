@@ -17,14 +17,6 @@ func CGSGetActiveSpace(_ cid: CGSConnectionID) -> CGSSpaceID
 @_silgen_name("CGSCopyManagedDisplaySpaces")
 func CGSCopyManagedDisplaySpaces(_ cid: CGSConnectionID) -> CFArray
 
-// SLS variant of the space-switch call. On recent macOS the CGS-prefixed
-// alias has been progressively neutered — see #10. The SLS-prefixed symbol
-// is what newer SkyLight clients call.
-@_silgen_name("SLSManagedDisplaySetCurrentSpace")
-func SLSManagedDisplaySetCurrentSpace(_ cid: CGSConnectionID,
-                                       _ display: CFString,
-                                       _ space: CGSSpaceID)
-
 @_silgen_name("CGSSpaceDestroy")
 func CGSSpaceDestroy(_ cid: CGSConnectionID, _ space: CGSSpaceID)
 
@@ -233,6 +225,25 @@ enum DominantAppFinder {
     }
 }
 
+// MARK: - Mission Control launcher (public API only)
+
+/// Tahoe broke the private `(CGS|SLS)ManagedDisplaySetCurrentSpace` switch
+/// path — calling it doesn't actually move the active space, it just
+/// activates whatever app is on the target space, which surfaces those
+/// app windows on top of the current space's content (the symptom the
+/// user reports). Until a working zero-permission switch path is found
+/// (without Accessibility, which we want to avoid), the best UX is to
+/// open Mission Control and let the user click the space they want.
+enum MissionControl {
+    static func open() {
+        let url = URL(fileURLWithPath: "/System/Applications/Mission Control.app")
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: config,
+                                           completionHandler: nil)
+    }
+}
+
 // MARK: - Name store
 
 final class NameStore {
@@ -280,7 +291,6 @@ final class SpaceRowView: NSView {
 
     private let iconView = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
-    private let actionsButton = NSButton()
     private let checkmark = NSImageView()
 
     private var trackingArea: NSTrackingArea?
@@ -328,23 +338,6 @@ final class SpaceRowView: NSView {
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(nameLabel)
 
-        // Always-visible "actions" button. Click opens a popup menu with
-        // Rename / Delete — discoverable per-row access that doesn't depend
-        // on rightMouseDown being delivered to a custom NSMenuItem.view
-        // (which has been unreliable on macOS Tahoe — see #11).
-        actionsButton.image = NSImage(systemSymbolName: "ellipsis.circle",
-                                      accessibilityDescription: "Space actions")
-        actionsButton.imageScaling = .scaleProportionallyDown
-        actionsButton.contentTintColor = .secondaryLabelColor
-        actionsButton.isBordered = false
-        actionsButton.bezelStyle = .smallSquare
-        actionsButton.target = self
-        actionsButton.action = #selector(actionsClicked(_:))
-        actionsButton.setButtonType(.momentaryChange)
-        actionsButton.toolTip = "Rename or delete this space"
-        actionsButton.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(actionsButton)
-
         checkmark.image = NSImage(systemSymbolName: "checkmark",
                                   accessibilityDescription: nil)
         checkmark.contentTintColor = .controlAccentColor
@@ -360,12 +353,7 @@ final class SpaceRowView: NSView {
 
             nameLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
             nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: actionsButton.leadingAnchor, constant: -6),
-
-            actionsButton.trailingAnchor.constraint(equalTo: checkmark.leadingAnchor, constant: -6),
-            actionsButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-            actionsButton.widthAnchor.constraint(equalToConstant: 18),
-            actionsButton.heightAnchor.constraint(equalToConstant: 18),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: checkmark.leadingAnchor, constant: -8),
 
             checkmark.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             checkmark.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -395,19 +383,16 @@ final class SpaceRowView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        // Ignore mouse-up that originated inside the actions button —
-        // NSButton's own click handler runs that path.
-        let local = convert(event.locationInWindow, from: nil)
-        if actionsButton.frame.contains(local) { return }
         enclosingMenuItem?.menu?.cancelTracking()
         if canSwitch && !isActive { onSwitch() }
     }
 
-    @objc private func actionsClicked(_ sender: NSButton) {
-        showActionsMenu(from: sender)
-    }
-
-    private func showActionsMenu(from anchor: NSView) {
+    /// Build and show the Rename / Delete context menu anchored at the given
+    /// screen-space point. Called by both the NSView rightMouseDown override
+    /// (when AppKit delivers it) and by the menu-scoped NSEvent monitor in
+    /// AppDelegate (when AppKit doesn't, as on macOS Tahoe — see #11).
+    func showContextMenu(atScreenPoint screenPoint: NSPoint? = nil,
+                         from event: NSEvent? = nil) {
         let ctx = NSMenu()
         let rename = NSMenuItem(title: "Rename…",
                                 action: #selector(renameClicked),
@@ -421,29 +406,24 @@ final class SpaceRowView: NSView {
         delete.target = self
         ctx.addItem(delete)
 
-        // Anchor under the bottom-left of the button.
-        let origin = NSPoint(x: 0, y: anchor.bounds.height + 2)
-        ctx.popUp(positioning: nil, at: origin, in: anchor)
+        if let event {
+            NSMenu.popUpContextMenu(ctx, with: event, for: self)
+        } else {
+            // Position under the bottom-left of the row when there's no event
+            // (e.g. invoked from a keyboard shortcut later). Falls back to the
+            // current cursor position by way of NSMenu's default behavior.
+            let origin = screenPoint.flatMap { window?.convertPoint(fromScreen: $0) }
+                ?? NSPoint(x: 0, y: bounds.height)
+            ctx.popUp(positioning: nil, at: origin, in: self)
+        }
     }
 
     override func rightMouseDown(with event: NSEvent) {
-        // Tahoe doesn't always deliver this to a custom NSMenuItem.view —
-        // the actions button is the primary entry point. This stays as a
-        // bonus path for installs where it still works.
-        let ctx = NSMenu()
-        let rename = NSMenuItem(title: "Rename…",
-                                action: #selector(renameClicked),
-                                keyEquivalent: "")
-        rename.target = self
-        ctx.addItem(rename)
-
-        let delete = NSMenuItem(title: "Delete Space…",
-                                action: #selector(deleteClicked),
-                                keyEquivalent: "")
-        delete.target = self
-        ctx.addItem(delete)
-
-        NSMenu.popUpContextMenu(ctx, with: event, for: self)
+        // On macOS where this delivery works, use it directly. On Tahoe the
+        // AppDelegate-side NSEvent local monitor handles right-clicks
+        // because this override doesn't get called inside a custom
+        // NSMenuItem.view. Both paths route to the same context menu.
+        showContextMenu(from: event)
     }
 
     @objc private func renameClicked() {
@@ -640,6 +620,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         userDriverDelegate: nil
     )
     private var hotkeys: GlobalHotkeys?
+    private var menuRightClickMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -717,6 +698,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // MARK: NSMenuDelegate
+
+    func menuWillOpen(_ menu: NSMenu) {
+        // AppKit doesn't reliably deliver rightMouseDown to a custom
+        // NSMenuItem.view on macOS Tahoe, so the row's override never fires.
+        // A scoped NSEvent local monitor installed while the menu is open
+        // catches the click, hit-tests it against each SpaceRowView, and
+        // routes to the same context menu the row would show itself. See #11.
+        if menuRightClickMonitor == nil {
+            menuRightClickMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.rightMouseDown]
+            ) { [weak self, weak menu] event in
+                guard let self, let menu else { return event }
+                if self.routeRightClickToRow(event: event, menu: menu) {
+                    return nil
+                }
+                return event
+            }
+        }
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        if let monitor = menuRightClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            menuRightClickMonitor = nil
+        }
+    }
+
+    private func routeRightClickToRow(event: NSEvent, menu: NSMenu) -> Bool {
+        for item in menu.items {
+            guard let row = item.view as? SpaceRowView,
+                  let win = row.window,
+                  win == event.window
+            else { continue }
+            let pointInRow = row.convert(event.locationInWindow, from: nil)
+            if row.bounds.contains(pointInRow) {
+                row.showContextMenu(from: event)
+                return true
+            }
+        }
+        return false
+    }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
@@ -800,23 +822,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func switchTo(space: Space) {
-        guard !space.displayID.isEmpty, space.id64 != 0 else { return }
-        let cid = CGSMainConnectionID()
-        let before = CGSGetActiveSpace(cid)
-        SLSManagedDisplaySetCurrentSpace(cid,
-                                         space.displayID as CFString,
-                                         space.id64)
-        // The private switch APIs have been progressively neutered on recent
-        // macOS — verify the call actually moved the active space. If it
-        // didn't, surface that in the HUD instead of silently no-op'ing
-        // (the user's row click otherwise looks like nothing happened).
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            guard let self else { return }
-            let after = CGSGetActiveSpace(cid)
-            if after != space.id64, after == before {
-                self.hud.show(text: "Switch unavailable on this macOS")
-            }
-        }
+        // The private direct-switch APIs (CGS/SLSManagedDisplaySetCurrentSpace)
+        // no longer move the active space on macOS Tahoe — calling them just
+        // activates whatever app is on the target space, which surfaces those
+        // windows on top of the current space's content. Routing through
+        // Mission Control is the only reliable zero-permission switch on
+        // current macOS: one click opens Mission Control, a second click on
+        // the target thumbnail does the actual move. See #10.
+        _ = space  // accepted but unused while we don't have a direct path
+        MissionControl.open()
     }
 
     func confirmDelete(space: Space, name: String) {
