@@ -266,32 +266,50 @@ enum SpaceSwitcher {
     private static let horizontalMotion: Int64 = 1
     private static let swipeVelocity = 400.0
     private static let swipeProgress = 2.0
+    private static let swipeStepDelay: TimeInterval = 0.35
+    private static var pendingSwipeWorkItems: [DispatchWorkItem] = []
 
     static func switchTo(space target: Space, in snapshot: Snapshot) -> SpaceSwitchResult {
         guard let activeKey = snapshot.activeKey else { return .unavailable }
         guard activeKey != target.key else { return .alreadyActive }
+        guard !target.isFullscreen else { return .unavailable }
         guard AXIsProcessTrusted() else { return .needsAccessibility }
 
-        let displaySpaces = snapshot.spaces.filter {
-            !$0.isFullscreen && $0.displayID == target.displayID
-        }
+        let displaySpaces = snapshot.spaces.filter { $0.displayID == target.displayID }
         guard let currentIndex = displaySpaces.firstIndex(where: { $0.key == activeKey }),
               let targetIndex = displaySpaces.firstIndex(where: { $0.key == target.key })
-        else { return .unavailable }
+        else {
+            // A Dock swipe operates on the focused display. With one global
+            // activeKey, cross-display row clicks are intentionally unavailable
+            // instead of guessing which display macOS will route the gesture to.
+            return .unavailable
+        }
 
         let delta = targetIndex - currentIndex
         guard delta != 0 else { return .alreadyActive }
 
-        let goRight = delta > 0
-        for _ in 0..<abs(delta) {
-            postSwipeGesture(goRight: goRight)
-        }
+        postSwipeSequence(steps: abs(delta), goRight: delta > 0)
         return .switched
     }
 
     static func requestAccessibilityPermission() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
+    }
+
+    private static func postSwipeSequence(steps: Int, goRight: Bool) {
+        pendingSwipeWorkItems.forEach { $0.cancel() }
+        pendingSwipeWorkItems = []
+
+        for step in 0..<steps {
+            let item = DispatchWorkItem {
+                postSwipeGesture(goRight: goRight)
+            }
+            pendingSwipeWorkItems.append(item)
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + swipeStepDelay * Double(step),
+                execute: item)
+        }
     }
 
     private static func postSwipeGesture(goRight: Bool) {

@@ -12,7 +12,7 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 
 - **Menu bar item** shows the current space's custom name (falls back to "Desktop N").
 - **Click the menu bar item** to see all spaces grouped by display, with the active one marked.
-- **Click a space row** to switch to it. The first switch prompts for Accessibility permission so SpacesManager can send the same Dock swipe event as a trackpad space switch.
+- **Click a space row** to switch to it. The first switch prompts for Accessibility permission so SpacesManager can send the same Dock swipe event as a trackpad space switch. On multi-display setups, switching is limited to rows on the focused display.
 - **Right-click a space row** for a context menu: Rename, Delete Space (with confirm).
 - **Brief HUD** fades in at the top of the screen on every space switch, showing the name.
 - **Rename Current Space…** quick action in the menu.
