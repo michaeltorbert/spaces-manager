@@ -16,8 +16,8 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 - **Right-click a space row** for a context menu: Rename, Delete Space (with confirm).
 - **Brief HUD** fades in at the top of the screen on every space switch, showing the name.
 - **Rename Current Space…** quick action in the menu.
-- **Rename All Spaces…** opens a window for bulk editing.
-- **Add New Space** opens Mission Control so you can click `+` (Apple removed the programmatic-add private API on Tahoe — see [Tahoe findings](#tahoe-private-api-findings)).
+- **Space Management → Rename All Spaces…** opens a window for bulk editing.
+- **Space Management → Open Mission Control…** opens Mission Control so you can click `+` if you need to create a space manually (Apple removed the programmatic-add private API on Tahoe — see [Tahoe findings](#tahoe-private-api-findings)).
 - **Names persist** in `UserDefaults` under bundle id `local.spacesmanager`, keyed by each space's UUID (or a stable per-display fallback key when macOS returns an empty UUID).
 - **Self-updates** via Sparkle: a daily background check + a "Check for Updates…" menu item. Updates are verified with an EdDSA signature embedded in the app; only releases signed with the matching private key will install.
 
@@ -131,7 +131,7 @@ SpacesManager takes the opposite tradeoff: stable UUID-keyed naming and an unlim
 | macOS | Status |
 |---|---|
 | 26 (Tahoe) | ✓ developed and tested here |
-| 13–15 (Ventura → Sequoia) | should work; identical APIs except `Add New Space` may use the now-missing attach symbol if you patch it back in for older systems |
+| 13–15 (Ventura → Sequoia) | should work; identical APIs except programmatic space creation may use the now-missing attach symbol if you patch it back in for older systems |
 | 12 (Monterey) and earlier | `LSMinimumSystemVersion` is set to 13; build target can be lowered |
 
 If you try it on another version, PRs with findings are welcome.

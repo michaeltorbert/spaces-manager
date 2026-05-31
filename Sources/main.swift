@@ -717,17 +717,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         renameCurrent.target = self
         menu.addItem(renameCurrent)
 
+        let management = NSMenuItem(title: "Space Management",
+                                    action: nil,
+                                    keyEquivalent: "")
+        let managementMenu = NSMenu(title: "Space Management")
+
         let renameAll = NSMenuItem(title: "Rename All Spaces…",
                                    action: #selector(renameAllSpaces),
                                    keyEquivalent: "")
         renameAll.target = self
-        menu.addItem(renameAll)
+        managementMenu.addItem(renameAll)
 
-        let addSpace = NSMenuItem(title: "Add New Space (opens Mission Control)",
-                                  action: #selector(addNewSpace),
-                                  keyEquivalent: "")
-        addSpace.target = self
-        menu.addItem(addSpace)
+        let openMissionControl = NSMenuItem(title: "Open Mission Control…",
+                                            action: #selector(openMissionControl),
+                                            keyEquivalent: "")
+        openMissionControl.target = self
+        managementMenu.addItem(openMissionControl)
+
+        management.submenu = managementMenu
+        menu.addItem(management)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -799,10 +807,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc func addNewSpace() {
+    @objc func openMissionControl() {
         // Tahoe removed the private SLSAddSpacesToManagedDisplay symbol, so we
-        // can't attach a programmatically-created space anymore. Instead, open
-        // Mission Control so the user can click + in the top-right corner.
+        // can't attach a programmatically-created space anymore. Keep this as
+        // a lower-priority handoff so the user can click + in Mission Control.
         MissionControl.open()
     }
 
