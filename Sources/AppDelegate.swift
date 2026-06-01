@@ -138,8 +138,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func displayName(for displayID: String,
                              at index: Int,
-                             in snapshot: Snapshot) -> String {
-        snapshot.displayNamesByID[displayID] ?? "Display \(index + 1)"
+                             in displayNamesByID: [String: String]) -> String {
+        displayNamesByID[displayID] ?? "Display \(index + 1)"
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -148,11 +148,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lastActiveKey = snap.activeKey
         let grouped = Dictionary(grouping: snap.spaces, by: { $0.displayID })
         let displayKeys = grouped.keys.sorted()
+        let showsDisplayHeaders = displayKeys.count > 1
+        let displayNamesByID = showsDisplayHeaders ? DisplayNameResolver.names(for: displayKeys) : [:]
 
         for (di, display) in displayKeys.enumerated() {
-            if displayKeys.count > 1 {
+            if showsDisplayHeaders {
                 let header = NSMenuItem()
-                header.title = displayName(for: display, at: di, in: snap)
+                header.title = displayName(for: display, at: di, in: displayNamesByID)
                 header.isEnabled = false
                 menu.addItem(header)
             }
@@ -428,12 +430,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let grouped = Dictionary(grouping: regular, by: { $0.displayID })
         let displayKeys = grouped.keys.sorted()
         let multi = displayKeys.count > 1
+        let displayNamesByID = multi ? DisplayNameResolver.names(for: displayKeys) : [:]
 
         var rows: [NSView] = []
         for (di, display) in displayKeys.enumerated() {
             if multi {
                 let header = NSTextField(labelWithString:
-                    displayName(for: display, at: di, in: snap))
+                    displayName(for: display, at: di, in: displayNamesByID))
                 header.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
                 rows.append(header)
             }

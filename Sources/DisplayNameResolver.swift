@@ -2,6 +2,8 @@ import AppKit
 import Foundation
 
 enum DisplayNameResolver {
+    /// Resolves CGS display identifiers in the caller-provided display order.
+    /// Uses NSScreen, so call from UI/main-thread paths.
     static func names(for displayIDs: [String]) -> [String: String] {
         let screenNames = screenNamesByDisplayIdentifier()
         var usedCounts: [String: Int] = [:]
@@ -12,8 +14,8 @@ enum DisplayNameResolver {
                 ?? screenNames[displayID.lowercased()]
             else { continue }
 
-            usedCounts[baseName, default: 0] += 1
-            let count = usedCounts[baseName] ?? 1
+            let count = usedCounts[baseName, default: 0] + 1
+            usedCounts[baseName] = count
             resolved[displayID] = count == 1 ? baseName : "\(baseName) \(count)"
         }
 

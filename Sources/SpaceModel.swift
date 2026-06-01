@@ -20,7 +20,6 @@ struct Snapshot {
     let spaces: [Space]
     let activeKey: String?
     let currentKeysByDisplay: [String: String]
-    let displayNamesByID: [String: String]
 }
 
 
@@ -33,7 +32,6 @@ enum SpacesProvider {
         let activeID = CGSGetActiveSpace(cid)
 
         var spaces: [Space] = []
-        var displayIDs: [String] = []
         var activeByID64: String?
         var activeByPlistCurrent: String?
         var currentKeysByDisplay: [String: String] = [:]
@@ -41,9 +39,6 @@ enum SpacesProvider {
         for display in displays {
             let displayID = (display["Display Identifier"] as? String) ?? ""
             guard let list = display["Spaces"] as? [[String: Any]] else { continue }
-            if !displayIDs.contains(displayID) {
-                displayIDs.append(displayID)
-            }
 
             let currentInfo = display["Current Space"] as? [String: Any]
             let currentManaged = (currentInfo?["ManagedSpaceID"] as? NSNumber)?.intValue
@@ -96,8 +91,7 @@ enum SpacesProvider {
         return Snapshot(
             spaces: spaces,
             activeKey: activeByID64 ?? activeByPlistCurrent,
-            currentKeysByDisplay: currentKeysByDisplay,
-            displayNamesByID: DisplayNameResolver.names(for: displayIDs))
+            currentKeysByDisplay: currentKeysByDisplay)
     }
 
     private static func plistFallback() -> [[String: Any]] {
