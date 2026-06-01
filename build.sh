@@ -7,6 +7,7 @@ NAME="SpacesManager"
 BUILD_DIR="build"
 APP="$BUILD_DIR/$NAME.app"
 MACOS="$APP/Contents/MacOS"
+RESOURCES="$APP/Contents/Resources"
 APP_FRAMEWORKS="$APP/Contents/Frameworks"
 
 SPARKLE_VERSION="2.9.2"
@@ -30,7 +31,7 @@ fi
 
 # --- Build ------------------------------------------------------------------
 rm -rf "$APP"
-mkdir -p "$MACOS" "$APP_FRAMEWORKS"
+mkdir -p "$MACOS" "$RESOURCES" "$APP_FRAMEWORKS"
 
 swiftc -O \
   -target arm64-apple-macos13 \
@@ -44,6 +45,7 @@ swiftc -O \
   Sources/*.swift
 
 cp Info.plist "$APP/Contents/Info.plist"
+cp Assets/AppIcon.icns "$RESOURCES/AppIcon.icns"
 
 # Local dev builds: pin CFBundleVersion well above any release value so
 # Sparkle's auto-update doesn't silently swap this binary out for a
