@@ -1,5 +1,4 @@
 import AppKit
-import ApplicationServices
 import Carbon.HIToolbox
 import Foundation
 import Sparkle
@@ -244,211 +243,6 @@ enum DominantAppFinder {
     }
 }
 
-
-// MARK: - Mission Control accessibility switching
-
-enum MissionControlSpaceSelector {
-    private static let pollInterval: TimeInterval = 0.10
-    private static let timeout: TimeInterval = 2.0
-    private static let fallbackDelay: TimeInterval = 0.20
-    private static var pendingWorkItems: [DispatchWorkItem] = []
-    private static var sequenceID = 0
-
-    static func switchToDesktop(_ target: Space,
-                                fallback: @escaping () -> Void) -> Bool {
-        guard !target.isFullscreen,
-              target.regularIndex > 0,
-              AXIsProcessTrusted()
-        else { return false }
-        guard NSRunningApplication
-            .runningApplications(withBundleIdentifier: "com.apple.dock")
-            .first != nil
-        else { return false }
-
-        cancelPendingWork()
-        sequenceID += 1
-        let currentSequence = sequenceID
-        let labels = desktopLabels(for: target)
-        openMissionControl()
-        pollForTarget(
-            sequenceID: currentSequence,
-            labels: labels,
-            deadline: Date().addingTimeInterval(timeout),
-            fallback: fallback)
-        return true
-    }
-
-    private static func desktopLabels(for space: Space) -> [String] {
-        [space.defaultName]
-    }
-
-    private static func openMissionControl() {
-        let url = URL(fileURLWithPath: "/System/Applications/Mission Control.app")
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
-            if error != nil { postMissionControlShortcut() }
-        }
-    }
-
-    private static func pollForTarget(sequenceID: Int,
-                                      labels: [String],
-                                      deadline: Date,
-                                      fallback: @escaping () -> Void) {
-        scheduleWork(after: pollInterval) {
-            guard sequenceID == self.sequenceID else { return }
-            if pressSpaceTile(matching: labels) {
-                finish(sequenceID: sequenceID)
-                return
-            }
-            if Date() >= deadline {
-                postEscapeKey()
-                finish(sequenceID: sequenceID)
-                DispatchQueue.main.asyncAfter(deadline: .now() + fallbackDelay) {
-                    fallback()
-                }
-                return
-            }
-            pollForTarget(
-                sequenceID: sequenceID,
-                labels: labels,
-                deadline: deadline,
-                fallback: fallback)
-        }
-    }
-
-    private static func pressSpaceTile(matching labels: [String]) -> Bool {
-        guard let dock = NSRunningApplication
-            .runningApplications(withBundleIdentifier: "com.apple.dock")
-            .first
-        else { return false }
-
-        let dockElement = AXUIElementCreateApplication(dock.processIdentifier)
-        var visited = 0
-        guard let tile = findPressableElement(
-            in: dockElement,
-            matching: labels,
-            ancestors: [],
-            depth: 0,
-            visited: &visited)
-        else { return false }
-        return AXUIElementPerformAction(tile, kAXPressAction as CFString) == .success
-    }
-
-    private static func findPressableElement(in element: AXUIElement,
-                                             matching labels: [String],
-                                             ancestors: [AXUIElement],
-                                             depth: Int,
-                                             visited: inout Int) -> AXUIElement? {
-        visited += 1
-        guard depth <= 10, visited <= 700 else { return nil }
-
-        let path = ancestors + [element]
-        if elementMatches(element, labels: labels) {
-            if let pressable = path.reversed().first(where: hasPressAction) {
-                return pressable
-            }
-        }
-
-        for attr in [kAXChildrenAttribute, kAXVisibleChildrenAttribute] {
-            var value: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(element, attr as CFString, &value) == .success,
-                  let children = value as? [AXUIElement]
-            else { continue }
-            for child in children {
-                if let match = findPressableElement(
-                    in: child,
-                    matching: labels,
-                    ancestors: path,
-                    depth: depth + 1,
-                    visited: &visited) {
-                    return match
-                }
-            }
-        }
-        return nil
-    }
-
-    private static func elementMatches(_ element: AXUIElement,
-                                       labels: [String]) -> Bool {
-        let attributes: [CFString] = [
-            kAXTitleAttribute as CFString,
-            kAXDescriptionAttribute as CFString,
-            "AXIdentifier" as CFString,
-        ]
-        for attr in attributes {
-            guard let value = copyStringAttribute(attr, from: element) else { continue }
-            if labels.contains(where: { labelMatches(value, target: $0) }) {
-                return true
-            }
-        }
-        return false
-    }
-
-    private static func labelMatches(_ value: String, target: String) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed == target
-            || trimmed.hasPrefix(target + " ")
-            || trimmed.hasPrefix(target + ",")
-            || trimmed.hasPrefix(target + "\n")
-    }
-
-    private static func copyStringAttribute(_ attr: CFString,
-                                            from element: AXUIElement) -> String? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attr, &value) == .success,
-              let string = value as? String,
-              !string.isEmpty
-        else { return nil }
-        return string
-    }
-
-    private static func hasPressAction(_ element: AXUIElement) -> Bool {
-        var value: CFArray?
-        guard AXUIElementCopyActionNames(element, &value) == .success,
-              let actions = value as? [String]
-        else { return false }
-        return actions.contains(kAXPressAction as String)
-    }
-
-    private static func postMissionControlShortcut() {
-        postKey(virtualKey: 126, flags: .maskControl)
-    }
-
-    private static func postEscapeKey() {
-        postKey(virtualKey: 53, flags: [])
-    }
-
-    private static func postKey(virtualKey: CGKeyCode,
-                                flags: CGEventFlags) {
-        guard let down = CGEvent(keyboardEventSource: nil, virtualKey: virtualKey, keyDown: true),
-              let up = CGEvent(keyboardEventSource: nil, virtualKey: virtualKey, keyDown: false)
-        else { return }
-        down.flags = flags
-        up.flags = flags
-        down.post(tap: .cgSessionEventTap)
-        up.post(tap: .cgSessionEventTap)
-    }
-
-    private static func scheduleWork(after delay: TimeInterval,
-                                     _ block: @escaping () -> Void) {
-        let item = DispatchWorkItem(block: block)
-        pendingWorkItems.append(item)
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
-    }
-
-    private static func cancelPendingWork() {
-        pendingWorkItems.forEach { $0.cancel() }
-        pendingWorkItems = []
-    }
-
-    private static func finish(sequenceID: Int) {
-        guard sequenceID == self.sequenceID else { return }
-        cancelPendingWork()
-        self.sequenceID += 1
-    }
-}
-
 // MARK: - Space switching
 
 enum SpaceSwitchResult {
@@ -532,19 +326,11 @@ enum SpaceSwitcher {
         }
 
         let maxAttempts = max(minimumSteps + 3, displaySpaces.count + 2)
-        let startSwipeFallback = {
-            SpaceSwitcher.postSwipeSequence(
-                targetKey: target.key,
-                displayID: target.displayID,
-                maxAttempts: maxAttempts,
-                initialGoRight: goRight)
-        }
-        if MissionControlSpaceSelector.switchToDesktop(
-            target,
-            fallback: startSwipeFallback) {
-            return .switched
-        }
-        startSwipeFallback()
+        postSwipeSequence(
+            targetKey: target.key,
+            displayID: target.displayID,
+            maxAttempts: maxAttempts,
+            initialGoRight: goRight)
         return .switched
     }
 
@@ -1387,7 +1173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = "Allow SpacesManager to switch spaces"
-        alert.informativeText = "Click-to-switch uses macOS Accessibility permission to select Mission Control space tiles and send Dock swipe events when needed. SpacesManager does not need Screen Recording or SIP changes."
+        alert.informativeText = "Click-to-switch uses macOS Accessibility permission to send the same Dock swipe event as a trackpad space switch. SpacesManager does not need Screen Recording or SIP changes."
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)

@@ -12,7 +12,7 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 
 - **Menu bar item** shows the current space's custom name (falls back to "Desktop N").
 - **Click the menu bar item** to see all spaces grouped by display, with the active one marked.
-- **Click a space row** to switch to it. The first switch prompts for Accessibility permission so SpacesManager can select Mission Control space tiles and fall back to Dock swipe events when needed. Full-screen app spaces appear in the menu and can be targeted too.
+- **Click a space row** to switch to it. The first switch prompts for Accessibility permission so SpacesManager can send the same Dock swipe event as a trackpad space switch. Full-screen app spaces appear in the menu and can be targeted too.
 - **Right-click a normal desktop space row** for a context menu: Rename, Delete Space (with confirm).
 - **Brief HUD** fades in at the top of the screen on every space switch, showing the name.
 - **Rename Current Space…** quick action in the menu.
@@ -106,7 +106,7 @@ Probed against macOS 26.3.1 (Tahoe) on Apple Silicon, here's what I found:
 
 | Symbol | Was used for | Workaround |
 |---|---|---|
-| `CGSManagedDisplaySetCurrentSpace` / `SLSManagedDisplaySetCurrentSpace` | direct row-click switching | symbol still exists, but on Tahoe it only changes WindowServer bookkeeping and surfaces target-space windows over the current desktop. SpacesManager uses Accessibility-gated Mission Control tile selection for desktop targets, with synthetic Dock swipe gestures as a fallback and for full-screen targets. |
+| `CGSManagedDisplaySetCurrentSpace` / `SLSManagedDisplaySetCurrentSpace` | direct row-click switching | symbol still exists, but on Tahoe it only changes WindowServer bookkeeping and surfaces target-space windows over the current desktop. SpacesManager uses Accessibility-gated synthetic Dock swipe gestures instead. |
 
 ### Removed / missing on Tahoe
 
