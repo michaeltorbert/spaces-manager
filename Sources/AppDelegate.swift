@@ -136,6 +136,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return false
     }
 
+    private func displayName(for displayID: String,
+                             at index: Int,
+                             in snapshot: Snapshot) -> String {
+        snapshot.displayNamesByID[displayID] ?? "Display \(index + 1)"
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let snap = SpacesProvider.snapshot()
@@ -146,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for (di, display) in displayKeys.enumerated() {
             if displayKeys.count > 1 {
                 let header = NSMenuItem()
-                header.title = "Display \(di + 1)"
+                header.title = displayName(for: display, at: di, in: snap)
                 header.isEnabled = false
                 menu.addItem(header)
             }
@@ -426,7 +432,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var rows: [NSView] = []
         for (di, display) in displayKeys.enumerated() {
             if multi {
-                let header = NSTextField(labelWithString: "Display \(di + 1)")
+                let header = NSTextField(labelWithString:
+                    displayName(for: display, at: di, in: snap))
                 header.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
                 rows.append(header)
             }
