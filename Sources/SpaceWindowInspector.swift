@@ -13,6 +13,8 @@ struct SpaceWindowSummary {
 /// utility-panel / accessory-agent windows cannot dominate either calculation.
 enum SpaceWindowInspector {
     private static let allSpacesMask: UInt32 = 0x7
+    // CoreGraphics includes tiny helper/HUD windows owned by regular apps;
+    // keep those out of user-facing counts while preserving compact windows.
     private static let minimumWindowDimension: CGFloat = 40
 
     private struct UserAppWindow {
@@ -56,6 +58,8 @@ enum SpaceWindowInspector {
         var builders: [CGSSpaceID: SummaryBuilder] = [:]
         for window in userAppWindows() {
             for spaceID in spaces(forWindow: window.id, cid: cid) {
+                // All-desktops windows can report multiple space IDs. Count
+                // them wherever WindowServer reports them visible.
                 guard requestedSpaceIDs.contains(spaceID) else { continue }
                 builders[spaceID, default: SummaryBuilder()].add(app: window.app)
             }
@@ -123,30 +127,5 @@ enum SpaceWindowInspector {
         return spaceNumbers
             .map { $0.uint64Value }
             .filter { $0 != 0 }
-    }
-}
-
-
-// MARK: - Window counts per space
-
-enum WindowCounter {
-    /// Count of normal-level windows on the given space owned by a regular
-    /// (Dock-visible) app. See `SpaceWindowInspector` for the exact filter.
-    /// Returns 0 if the space ID is unknown or the private API calls fail.
-    static func count(forSpace id64: CGSSpaceID) -> Int {
-        SpaceWindowInspector.summaries(forSpaces: [id64])[id64]?.count ?? 0
-    }
-}
-
-
-// MARK: - Dominant-app detection
-
-enum DominantAppFinder {
-    /// Returns the regular (Dock-visible) app that owns the most normal-level
-    /// user windows on the given space, or nil if no such windows exist. Uses
-    /// the same filter as `WindowCounter` so the subtitle/icon line up with
-    /// the `(N)` count and so utility / accessory owners can't dominate.
-    static func find(forSpace id64: CGSSpaceID) -> NSRunningApplication? {
-        SpaceWindowInspector.summaries(forSpaces: [id64])[id64]?.dominantApp
     }
 }

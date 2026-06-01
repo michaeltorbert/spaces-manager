@@ -158,7 +158,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let isActive = (sp.key == currentKey)
                 let windowSummary = windowSummaries[sp.id64]
                 let dominantApp = dominantApp(
-                    for: sp,
                     isActive: isActive,
                     summary: windowSummary
                 )
@@ -327,8 +326,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// where a multi-window app (e.g. Safari with many tab windows) drowns
     /// out a single-window app the user is actually working in. For inactive
     /// spaces we fall back to the most-windowed-owner heuristic.
-    private func dominantApp(for space: Space,
-                             isActive: Bool,
+    private func dominantApp(isActive: Bool,
                              summary: SpaceWindowSummary?) -> NSRunningApplication? {
         if isActive,
            let front = NSWorkspace.shared.frontmostApplication,
