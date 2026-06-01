@@ -899,6 +899,187 @@ final class HUDWindow: NSPanel {
     }
 }
 
+// MARK: - Released version checks for local dev builds
+
+private struct ReleasedVersion {
+    let displayVersion: String
+    let downloadURL: URL?
+    let infoURL: URL?
+}
+
+private enum ReleasedVersionCheckError: Error {
+    case missingData
+    case noReleaseInAppcast
+}
+
+private enum ReleasedVersionChecker {
+    static func fetchLatest(feedURL: URL,
+                            completion: @escaping (Result<ReleasedVersion, Error>) -> Void) {
+        URLSession.shared.dataTask(with: feedURL) { data, _, error in
+            if let error {
+                completion(.failure(error))
+                return
+            }
+            guard let data else {
+                completion(.failure(ReleasedVersionCheckError.missingData))
+                return
+            }
+
+            let parser = AppcastReleaseParser()
+            do {
+                let releases = try parser.parse(data: data)
+                guard let latest = releases.max(by: {
+                    compareVersions($0.displayVersion, $1.displayVersion) == .orderedAscending
+                }) else {
+                    completion(.failure(ReleasedVersionCheckError.noReleaseInAppcast))
+                    return
+                }
+                completion(.success(latest))
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+
+    static func compareVersions(_ lhs: String, _ rhs: String) -> ComparisonResult {
+        lhs.compare(rhs, options: [.numeric, .caseInsensitive])
+    }
+}
+
+private final class AppcastReleaseParser: NSObject, XMLParserDelegate {
+    private struct PartialItem {
+        var title: String?
+        var displayVersion: String?
+        var version: String?
+        var downloadURL: URL?
+        var infoURL: URL?
+    }
+
+    private var releases: [ReleasedVersion] = []
+    private var currentItem: PartialItem?
+    private var currentElement: String?
+    private var textBuffer = ""
+
+    func parse(data: Data) throws -> [ReleasedVersion] {
+        releases = []
+        currentItem = nil
+        currentElement = nil
+        textBuffer = ""
+
+        let parser = XMLParser(data: data)
+        parser.delegate = self
+        guard parser.parse() else {
+            throw parser.parserError ?? ReleasedVersionCheckError.noReleaseInAppcast
+        }
+        return releases
+    }
+
+    func parser(_ parser: XMLParser,
+                didStartElement elementName: String,
+                namespaceURI: String?,
+                qualifiedName qName: String?,
+                attributes attributeDict: [String: String] = [:]) {
+        let name = localName(qName ?? elementName)
+        textBuffer = ""
+        currentElement = name
+
+        if name == "item" {
+            currentItem = PartialItem()
+            return
+        }
+
+        guard currentItem != nil else { return }
+        if name == "enclosure" {
+            if let value = attribute(attributeDict, named: ["url"]),
+               let url = URL(string: value) {
+                currentItem?.downloadURL = url
+            }
+            if let value = attribute(
+                attributeDict,
+                named: ["sparkle:shortVersionString", "shortVersionString"]
+            ) {
+                currentItem?.displayVersion = value
+            }
+            if let value = attribute(attributeDict, named: ["sparkle:version", "version"]) {
+                currentItem?.version = value
+            }
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        guard currentItem != nil, currentElement != nil else { return }
+        textBuffer += string
+    }
+
+    func parser(_ parser: XMLParser,
+                didEndElement elementName: String,
+                namespaceURI: String?,
+                qualifiedName qName: String?) {
+        let name = localName(qName ?? elementName)
+        guard currentItem != nil else {
+            currentElement = nil
+            textBuffer = ""
+            return
+        }
+
+        if name == "item" {
+            finishCurrentItem()
+            return
+        }
+
+        let text = textBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
+            switch name {
+            case "title":
+                currentItem?.title = text
+            case "shortVersionString":
+                currentItem?.displayVersion = text
+            case "version":
+                currentItem?.version = text
+            case "link":
+                currentItem?.infoURL = URL(string: text)
+            default:
+                break
+            }
+        }
+        currentElement = nil
+        textBuffer = ""
+    }
+
+    private func finishCurrentItem() {
+        defer {
+            currentItem = nil
+            currentElement = nil
+            textBuffer = ""
+        }
+
+        guard let item = currentItem else { return }
+        let displayVersion = item.displayVersion ?? item.title ?? item.version
+        guard let displayVersion, !displayVersion.isEmpty else { return }
+        releases.append(ReleasedVersion(
+            displayVersion: displayVersion,
+            downloadURL: item.downloadURL,
+            infoURL: item.infoURL
+        ))
+    }
+
+    private func attribute(_ attributes: [String: String], named names: [String]) -> String? {
+        for name in names {
+            if let value = attributes[name] {
+                return value
+            }
+        }
+        for (key, value) in attributes where names.contains(localName(key)) {
+            return value
+        }
+        return nil
+    }
+
+    private func localName(_ name: String) -> String {
+        name.split(separator: ":").last.map(String.init) ?? name
+    }
+}
+
 // MARK: - App delegate
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -909,6 +1090,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var editorWindow: NSWindow?
     private var editorFields: [(key: String, field: NSTextField)] = []
     private var hasShownSwitchPermissionAlert = false
+    private var releaseCheckInFlight = false
     private let updaterController = SPUStandardUpdaterController(
         startingUpdater: true,
         updaterDelegate: nil,
@@ -1096,11 +1278,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(NSMenuItem.separator())
 
         let checkForUpdates = NSMenuItem(
-            title: "Check for Updates…",
-            action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+            title: isLocalDevelopmentBuild
+                ? "Check for Released Version…"
+                : "Check for Updates…",
+            action: #selector(checkForUpdates(_:)),
             keyEquivalent: ""
         )
-        checkForUpdates.target = updaterController
+        checkForUpdates.target = self
         menu.addItem(checkForUpdates)
 
         let relaunch = NSMenuItem(title: "Relaunch SpacesManager",
@@ -1113,6 +1297,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                               action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")
         menu.addItem(quit)
+    }
+
+    @objc private func checkForUpdates(_ sender: Any?) {
+        guard isLocalDevelopmentBuild else {
+            updaterController.checkForUpdates(sender)
+            return
+        }
+        checkReleasedVersionForDevelopmentBuild(sender: sender)
+    }
+
+    private var isLocalDevelopmentBuild: Bool {
+        guard let info = Bundle.main.infoDictionary else { return false }
+        if let value = info["SMDevelopmentBuild"] as? Bool {
+            return value
+        }
+        if let value = info["SMDevelopmentBuild"] as? NSNumber {
+            return value.boolValue
+        }
+        return (info["CFBundleVersion"] as? String) == "9999999"
+    }
+
+    private var currentDisplayVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+    }
+
+    private var appcastFeedURL: URL? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String else {
+            return nil
+        }
+        return URL(string: value)
+    }
+
+    private func checkReleasedVersionForDevelopmentBuild(sender: Any?) {
+        guard !releaseCheckInFlight else { return }
+        guard let feedURL = appcastFeedURL else {
+            updaterController.checkForUpdates(sender)
+            return
+        }
+
+        releaseCheckInFlight = true
+        ReleasedVersionChecker.fetchLatest(feedURL: feedURL) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.releaseCheckInFlight = false
+
+                switch result {
+                case .success(let release)
+                    where ReleasedVersionChecker.compareVersions(
+                        release.displayVersion,
+                        self.currentDisplayVersion
+                    ) == .orderedDescending:
+                    self.showReleasedVersionAvailable(release)
+                default:
+                    self.updaterController.checkForUpdates(sender)
+                }
+            }
+        }
+    }
+
+    private func showReleasedVersionAvailable(_ release: ReleasedVersion) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Released Version Available"
+        alert.informativeText = "SpacesManager \(release.displayVersion) is available. This local development build has a high internal build number, so Sparkle cannot replace it automatically. Download the released app to switch back to the live version."
+        alert.addButton(withTitle: "Download \(release.displayVersion)")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        if let url = release.downloadURL ?? release.infoURL {
+            NSWorkspace.shared.open(url)
+        } else {
+            NSSound.beep()
+        }
     }
 
     @objc private func relaunchSpacesManager() {

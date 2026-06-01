@@ -51,6 +51,8 @@ cp Info.plist "$APP/Contents/Info.plist"
 # `git rev-list --count HEAD` and runs with $CI set, so it's unaffected.
 if [ -z "${CI:-}" ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 9999999" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Add :SMDevelopmentBuild bool true" "$APP/Contents/Info.plist" 2>/dev/null \
+    || /usr/libexec/PlistBuddy -c "Set :SMDevelopmentBuild true" "$APP/Contents/Info.plist"
 fi
 
 # Copy Sparkle.framework into the bundle, preserving symlinks.

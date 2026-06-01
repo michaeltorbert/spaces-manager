@@ -76,7 +76,7 @@ README.md                       this file
 RELEASING.md                    release runbook (cut a release, rollback, key-management notes)
 ```
 
-Single-file Swift app. No Xcode project, no Swift Package Manager — Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. For real releases, push a tag.
+Single-file Swift app. No Xcode project, no Swift Package Manager — Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. Local dev builds mark themselves so **Check for Released Version…** can offer the newest signed release zip even though the dev build's internal version is pinned above release builds. For real releases, push a tag.
 
 ---
 
