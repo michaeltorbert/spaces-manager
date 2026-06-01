@@ -12,13 +12,14 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 
 - **Menu bar item** shows the current space's custom name (falls back to "Desktop N").
 - **Click the menu bar item** to see all spaces grouped by display, with the active one marked.
-- **Click a space row** to switch to it.
-- **Right-click a space row** for a context menu: Rename, Delete Space (with confirm).
+- **Click a space row** to switch to it. The first switch prompts for Accessibility permission so SpacesManager can send the same Dock swipe event as a trackpad space switch. Full-screen app spaces appear in the menu and can be targeted too.
+- **Right-click a normal desktop space row** for a context menu: Rename, Delete Space (with confirm).
 - **Brief HUD** fades in at the top of the screen on every space switch, showing the name.
 - **Rename Current Space…** quick action in the menu.
 - **Rename All Spaces…** opens a window for bulk editing.
 - **Names persist** in `UserDefaults` under bundle id `local.spacesmanager`, keyed by each space's UUID (or a stable per-display fallback key when macOS returns an empty UUID).
 - **Self-updates** via Sparkle: a daily background check + a "Check for Updates…" menu item. Updates are verified with an EdDSA signature embedded in the app; only releases signed with the matching private key will install.
+- **Relaunch SpacesManager** from the menu after replacing a local test build.
 
 ---
 
@@ -27,7 +28,7 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 - macOS 13 or later (built with `-target arm64-apple-macos13`)
 - Xcode Command Line Tools (`xcode-select --install`) for `swiftc` and `codesign`
 
-No Apple Developer account, no entitlements, no Accessibility permission, no SIP changes.
+No Apple Developer account, no entitlements, no Screen Recording permission, no SIP changes. Click-to-switch requires Accessibility permission.
 
 ## Build
 
@@ -92,7 +93,6 @@ Probed against macOS 26.3.1 (Tahoe) on Apple Silicon, here's what I found:
 | `CGSMainConnectionID` | get the default WindowServer connection |
 | `CGSGetActiveSpace` | current space ID |
 | `CGSCopyManagedDisplaySpaces` | full topology of displays → spaces, with `uuid`, `id64`, `ManagedSpaceID`, `Current Space` |
-| `CGSManagedDisplaySetCurrentSpace` | switch the active space on a display |
 | `CGSSpaceDestroy` | delete a space |
 | `CGSCopyActiveMenuBarDisplayIdentifier` | which display has the menu bar |
 | `SLSManagedDisplayGetCurrentSpace` | per-display current space |
@@ -100,6 +100,12 @@ Probed against macOS 26.3.1 (Tahoe) on Apple Silicon, here's what I found:
 | `SLSCopyWindowsWithOptionsAndTags`, `SLSCopySpacesForWindows`, `SLSMoveWindowsToManagedSpace`, `SLSAddWindowsToSpaces`, `SLSRemoveWindowsFromSpaces` | window↔space membership (not yet used in this app) |
 | `SLSHWCaptureWindowList`, `SLSCaptureWindowsContentsToRectWithOptions` | window-image capture (not yet used) |
 | `SLSSpaceSetType`, `SLSSpaceGetType` | space type |
+
+### Broken / not viable on Tahoe
+
+| Symbol | Was used for | Workaround |
+|---|---|---|
+| `CGSManagedDisplaySetCurrentSpace` / `SLSManagedDisplaySetCurrentSpace` | direct row-click switching | symbol still exists, but on Tahoe it only changes WindowServer bookkeeping and surfaces target-space windows over the current desktop. SpacesManager uses Accessibility-gated synthetic Dock swipe gestures instead. |
 
 ### Removed / missing on Tahoe
 
