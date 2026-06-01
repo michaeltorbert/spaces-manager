@@ -67,6 +67,7 @@ CI builds, signs, publishes the appcast, attaches the zip to the GitHub Release.
 
 ```
 Sources/                       Swift source split by concern
+Assets/                        app icon source and compiled .icns
 Info.plist                      bundle metadata + Sparkle keys (SUFeedURL, SUPublicEDKey)
 build.sh                        vendors Sparkle, runs swiftc, codesigns the nested chain, verifies
 Package.swift                   IDE indexing only; the real build is build.sh
