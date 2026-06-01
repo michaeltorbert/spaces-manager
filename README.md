@@ -30,6 +30,8 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 
 No Apple Developer account, no entitlements, no Screen Recording permission, no SIP changes. Click-to-switch requires Accessibility permission.
 
+Because SpacesManager is a menu-bar agent (`LSUIElement=true`), its app icon appears in Finder, Get Info, Spotlight, and release artifacts, not in the Dock or app switcher.
+
 ## Build
 
 ```sh
@@ -67,7 +69,7 @@ CI builds, signs, publishes the appcast, attaches the zip to the GitHub Release.
 
 ```
 Sources/                       Swift source split by concern
-Assets/                        app icon source and compiled .icns
+Assets/                        app icon source, generator script, and compiled .icns
 Info.plist                      bundle metadata + Sparkle keys (SUFeedURL, SUPublicEDKey)
 build.sh                        vendors Sparkle, runs swiftc, codesigns the nested chain, verifies
 Package.swift                   IDE indexing only; the real build is build.sh
@@ -78,7 +80,7 @@ README.md                       this file
 RELEASING.md                    release runbook (cut a release, rollback, key-management notes)
 ```
 
-Small raw-`swiftc` Swift app. No Xcode project; `Package.swift` is for IDE indexing only. Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. Local dev builds mark themselves so **Check for Released Version…** can offer the newest signed release zip even though the dev build's internal version is pinned above release builds. For real releases, push a tag.
+Small raw-`swiftc` Swift app. No Xcode project; `Package.swift` is for IDE indexing only. Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. If the app icon changes, regenerate `Assets/AppIcon.svg` and `Assets/AppIcon.icns` with `Assets/build-icon.sh`. Local dev builds mark themselves so **Check for Released Version…** can offer the newest signed release zip even though the dev build's internal version is pinned above release builds. For real releases, push a tag.
 
 ---
 

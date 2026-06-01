@@ -65,6 +65,7 @@ First build downloads Sparkle into `Frameworks/`. No test suite exists — verif
 ## Project shape
 
 - `Sources/` — Swift source split into per-concern files, with `main.swift` kept as the minimal entry point.
+- `Assets/` — app icon source, generator script, and compiled `.icns`.
 - `Info.plist` — bundle metadata + Sparkle keys (`SUFeedURL`, `SUPublicEDKey`, `SUEnableAutomaticChecks`, `SUScheduledCheckInterval`).
 - `build.sh` — vendors Sparkle, runs `swiftc`, signs the nested chain.
 - `Package.swift` — IDE indexing only.
