@@ -1317,10 +1317,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         checkForUpdates.target = updaterController
         menu.addItem(checkForUpdates)
 
+        let relaunch = NSMenuItem(title: "Relaunch SpacesManager",
+                                  action: #selector(relaunchSpacesManager),
+                                  keyEquivalent: "")
+        relaunch.target = self
+        menu.addItem(relaunch)
+
         let quit = NSMenuItem(title: "Quit SpacesManager",
                               action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")
         menu.addItem(quit)
+    }
+
+    @objc private func relaunchSpacesManager() {
+        let bundlePath = Bundle.main.bundleURL.path
+        let quotedPath = shellQuoted(bundlePath)
+        let command = "sleep 0.4; /usr/bin/open \(quotedPath)"
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", command]
+        do {
+            try task.run()
+            NSApp.terminate(nil)
+        } catch {
+            NSSound.beep()
+        }
+    }
+
+    private func shellQuoted(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     /// "Dominant app" for a row. For the active space we prefer the currently

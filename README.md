@@ -20,6 +20,7 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 - **Add New Space** opens Mission Control so you can click `+` (Apple removed the programmatic-add private API on Tahoe — see [Tahoe findings](#tahoe-private-api-findings)).
 - **Names persist** in `UserDefaults` under bundle id `local.spacesmanager`, keyed by each space's UUID (or a stable per-display fallback key when macOS returns an empty UUID).
 - **Self-updates** via Sparkle: a daily background check + a "Check for Updates…" menu item. Updates are verified with an EdDSA signature embedded in the app; only releases signed with the matching private key will install.
+- **Relaunch SpacesManager** from the menu after replacing a local test build.
 
 ---
 
