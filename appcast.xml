@@ -3,6 +3,16 @@
     <channel>
         <title>SpacesManager</title>
         <item>
+            <title>1.0.3</title>
+            <pubDate>Mon, 01 Jun 2026 02:40:21 +0000</pubDate>
+            <link>https://github.com/michaeltorbert/spaces-manager</link>
+            <sparkle:version>27</sparkle:version>
+            <sparkle:shortVersionString>1.0.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/michaeltorbert/spaces-manager/releases/download/v1.0.3/SpacesManager-1.0.3.zip" length="1105138" type="application/octet-stream" sparkle:edSignature="dBT5lA6RFiaEA1C0Dz5hrr5/B3Jj7PMT1FE5oMuUitvOjeS51aHDOVHA21Ow8NsG1+TJ3BN8MCdlEoomCHA3CQ=="/>
+        </item>
+        <item>
             <title>1.0.2</title>
             <pubDate>Mon, 01 Jun 2026 02:26:04 +0000</pubDate>
             <link>https://github.com/michaeltorbert/spaces-manager</link>
@@ -21,16 +31,6 @@
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <enclosure url="https://github.com/michaeltorbert/spaces-manager/releases/download/v1.0.1/SpacesManager-1.0.1.zip" length="1077793" type="application/octet-stream" sparkle:edSignature="E6JMnJwOAKwBPqdDKHXoh9N+91v/xXz5xJva8gThu0Ng7a62DOnXlw1pG2n6SzDePHprsFtWraSKYzC1no6aBw=="/>
-        </item>
-        <item>
-            <title>1.0.0</title>
-            <pubDate>Sat, 30 May 2026 02:55:15 +0000</pubDate>
-            <link>https://github.com/michaeltorbert/spaces-manager</link>
-            <sparkle:version>5</sparkle:version>
-            <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/michaeltorbert/spaces-manager/releases/download/v1.0.0/SpacesManager-1.0.0.zip" length="1066576" type="application/octet-stream" sparkle:edSignature="UYwzGdlj4zZqfdyUeiFCyG0ip1Q0X2mdIjA+CpYcueuWAPB6PwUXXjOc3dOkD/AfJHdwN3JJd//orYyeSZxuBg=="/>
         </item>
     </channel>
 </rss>
