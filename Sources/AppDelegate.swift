@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let store = NameStore()
     private let hud = HUDWindow()
+    private var spaceHistory = SpaceHistory()
     private var lastActiveKey: String?
     private var editorWindow: NSWindow?
     private var editorFields: [(key: String, field: NSTextField)] = []
@@ -45,14 +46,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: NSNotification.Name("com.apple.exposeworkspacesdidchange"),
             object: nil)
 
-        hotkeys = GlobalHotkeys { [weak self] index in
-            self?.switchToSpace(atIndex: index)
+        hotkeys = GlobalHotkeys { [weak self] action in
+            switch action {
+            case .previousSpace:
+                self?.switchToPreviousSpace()
+            case .switchToSpace(let index):
+                self?.switchToSpace(atIndex: index)
+            }
         }
-        // Registration is opt-in because the switch path requires the app to
-        // have Accessibility permission. Power users can opt in via:
+        hotkeys?.registerPreviousSpace()
+        // Numbered space shortcuts remain opt-in. Power users can enable them via:
         //   defaults write local.spacesmanager enableGlobalHotkeys -bool YES
         if UserDefaults.standard.bool(forKey: "enableGlobalHotkeys") {
-            hotkeys?.register()
+            hotkeys?.registerNumberedSpaces()
         }
     }
 
@@ -74,13 +80,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func activeSpaceChanged() {
         let snap = SpacesProvider.snapshot()
+        let previousKey = lastActiveKey
         defer {
             lastActiveKey = snap.activeKey
             updateStatusTitle(snap: snap)
         }
-        guard let activeKey = snap.activeKey, activeKey != lastActiveKey,
+        guard let activeKey = snap.activeKey, activeKey != previousKey,
               let sp = snap.spaces.first(where: { $0.key == activeKey })
         else { return }
+        spaceHistory.recordTransition(
+            from: previousKey,
+            to: activeKey,
+            validKeys: Set(snap.spaces.map(\.key)))
         hud.show(text: store.displayName(for: sp))
     }
 
@@ -329,9 +340,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return DominantAppFinder.find(forSpace: space.id64)
     }
 
-    private func switchTo(space: Space) {
+    private func switchToPreviousSpace() {
         let snap = SpacesProvider.snapshot()
-        switch SpaceSwitcher.switchTo(space: space, in: snap) {
+        guard let previous = spaceHistory.popPreviousSpace(in: snap) else {
+            NSSound.beep()
+            return
+        }
+
+        switch switchTo(space: previous, in: snap) {
+        case .switched, .alreadyActive:
+            break
+        case .needsAccessibility, .unavailable:
+            spaceHistory.restore(previous.key)
+        }
+    }
+
+    @discardableResult
+    private func switchTo(space: Space, in snapshot: Snapshot? = nil) -> SpaceSwitchResult {
+        let snap = snapshot ?? SpacesProvider.snapshot()
+        let result = SpaceSwitcher.switchTo(space: space, in: snap)
+        switch result {
         case .switched, .alreadyActive:
             break
         case .needsAccessibility:
@@ -339,6 +367,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .unavailable:
             NSSound.beep()
         }
+        return result
     }
 
     private func requestSwitchAccessibility() {

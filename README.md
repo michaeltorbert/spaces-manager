@@ -13,6 +13,7 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 - **Menu bar item** shows the current space's custom name (falls back to "Desktop N").
 - **Click the menu bar item** to see all spaces grouped by display, with the active one marked.
 - **Click a space row** to switch to it. The first switch prompts for Accessibility permission so SpacesManager can send the same Dock swipe event as a trackpad space switch. Full-screen app spaces appear in the menu and can be targeted too.
+- **Press Control-Backtick** to jump back to the previously visited space.
 - **Right-click a normal desktop space row** for a context menu: Rename, Delete Space (with confirm).
 - **Brief HUD** fades in at the top of the screen on every space switch, showing the name.
 - **Rename Current Space…** quick action in the menu.
@@ -28,7 +29,7 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 - macOS 13 or later (built with `-target arm64-apple-macos13`)
 - Xcode Command Line Tools (`xcode-select --install`) for `swiftc` and `codesign`
 
-No Apple Developer account, no entitlements, no Screen Recording permission, no SIP changes. Click-to-switch requires Accessibility permission.
+No Apple Developer account, no entitlements, no Screen Recording permission, no SIP changes. Click-to-switch and the previous-space hotkey require Accessibility permission.
 
 ## Build
 
