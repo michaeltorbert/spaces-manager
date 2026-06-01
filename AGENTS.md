@@ -38,6 +38,10 @@ Keep implementation and review roles separate. Codex should not push fixes to a
 Claude-authored PR unless the user explicitly asks Codex to take over the
 implementation work.
 
+When an agent creates a pull request, rename that agent's active conversation
+or thread after the PR number is known. Include the PR number and issue number
+when available, for example `PR #36 for issue #29`.
+
 When Codex reviews a pull request:
 - Submit the formal GitHub PR review using `codex-bot-mt[bot]`.
 - Also leave a short top-level PR conversation comment summarizing the review
