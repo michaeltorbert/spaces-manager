@@ -150,6 +150,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let displayKeys = grouped.keys.sorted()
         let showsDisplayHeaders = displayKeys.count > 1
         let displayNamesByID = showsDisplayHeaders ? DisplayNameResolver.names(for: displayKeys) : [:]
+        let windowSummaries = SpaceWindowInspector.summaries(
+            forSpaces: snap.spaces.map { $0.id64 }
+        )
 
         for (di, display) in displayKeys.enumerated() {
             if showsDisplayHeaders {
@@ -161,7 +164,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for sp in grouped[display] ?? [] {
                 let currentKey = snap.currentKeysByDisplay[display] ?? snap.activeKey
                 let isActive = (sp.key == currentKey)
-                let dominantApp = dominantApp(for: sp, isActive: isActive)
+                let windowSummary = windowSummaries[sp.id64]
+                let dominantApp = dominantApp(
+                    isActive: isActive,
+                    summary: windowSummary
+                )
                 let baseName: String
                 if sp.isFullscreen {
                     if let appName = dominantApp?.localizedName, !appName.isEmpty {
@@ -172,7 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 } else {
                     baseName = store.displayName(for: sp)
                 }
-                let count = sp.isFullscreen ? 0 : WindowCounter.count(forSpace: sp.id64)
+                let count = sp.isFullscreen ? 0 : (windowSummary?.count ?? 0)
                 let displayed = count > 0 ? "\(baseName) (\(count))" : baseName
                 let canSwitch = !sp.displayID.isEmpty && sp.id64 != 0
                 let canManage = !sp.isFullscreen && sp.id64 != 0
@@ -327,14 +334,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// where a multi-window app (e.g. Safari with many tab windows) drowns
     /// out a single-window app the user is actually working in. For inactive
     /// spaces we fall back to the most-windowed-owner heuristic.
-    private func dominantApp(for space: Space, isActive: Bool) -> NSRunningApplication? {
+    private func dominantApp(isActive: Bool,
+                             summary: SpaceWindowSummary?) -> NSRunningApplication? {
         if isActive,
            let front = NSWorkspace.shared.frontmostApplication,
            front.activationPolicy == .regular,
            front.processIdentifier != getpid() {
             return front
         }
-        return DominantAppFinder.find(forSpace: space.id64)
+        return summary?.dominantApp
     }
 
     private func switchTo(space: Space) {

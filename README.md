@@ -98,7 +98,8 @@ Probed against macOS 26.3.1 (Tahoe) on Apple Silicon, here's what I found:
 | `CGSCopyActiveMenuBarDisplayIdentifier` | which display has the menu bar |
 | `SLSManagedDisplayGetCurrentSpace` | per-display current space |
 | `SLSSpaceDestroy` | (alias of CGSSpaceDestroy) |
-| `SLSCopyWindowsWithOptionsAndTags`, `SLSCopySpacesForWindows`, `SLSMoveWindowsToManagedSpace`, `SLSAddWindowsToSpaces`, `SLSRemoveWindowsFromSpaces` | window↔space membership (not yet used in this app) |
+| `SLSCopySpacesForWindows` | map regular app windows from `CGWindowListCopyWindowInfo` back to their Mission Control spaces for menu counts and dominant-app metadata |
+| `SLSCopyWindowsWithOptionsAndTags`, `SLSMoveWindowsToManagedSpace`, `SLSAddWindowsToSpaces`, `SLSRemoveWindowsFromSpaces` | window↔space membership helpers (not currently used in this app) |
 | `SLSHWCaptureWindowList`, `SLSCaptureWindowsContentsToRectWithOptions` | window-image capture (not yet used) |
 | `SLSSpaceSetType`, `SLSSpaceGetType` | space type |
 
