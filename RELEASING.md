@@ -67,6 +67,8 @@ The release workflow sets `CFBundleVersion` to `git rev-list --count HEAD` (curr
 
 `build.sh` works around this: when it detects no `$CI` environment variable, it bumps `CFBundleVersion` to `9999999` after copying `Info.plist` into the bundle. Released builds (run by the workflow with `CI=true`) are unaffected and still use the rev-list value.
 
+Local dev builds also mark the bundle with `SMDevelopmentBuild=true`. When **Check for Released Version…** is selected from a dev build, SpacesManager reads the live appcast's visible `sparkle:shortVersionString`; if the released version is newer than the dev bundle's display version, it offers the signed release zip directly instead of showing Sparkle's misleading "up to date" dialog.
+
 If you're testing a build that was created before this guard existed, or you want a belt-and-suspenders approach, you can also disable Sparkle's auto-checks for your installed copy:
 
 ```sh
