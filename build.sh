@@ -41,7 +41,7 @@ swiftc -O \
   -framework Sparkle \
   -Xlinker -rpath -Xlinker "@executable_path/../Frameworks" \
   -o "$MACOS/$NAME" \
-  Sources/main.swift
+  Sources/*.swift
 
 cp Info.plist "$APP/Contents/Info.plist"
 

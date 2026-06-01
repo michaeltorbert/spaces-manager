@@ -36,7 +36,7 @@ No Apple Developer account, no entitlements, no Screen Recording permission, no 
 ./build.sh
 ```
 
-On the first run this downloads Sparkle 2.9.2 (~15 MB) into `Frameworks/` and caches it for subsequent builds. The script then compiles `Sources/main.swift`, copies `Sparkle.framework` into the app bundle, strips xattrs, ad-hoc signs the nested XPC services + framework + outer app in that order, and verifies the chain passes `codesign --verify --deep --strict`.
+On the first run this downloads Sparkle 2.9.2 (~15 MB) into `Frameworks/` and caches it for subsequent builds. The script then compiles `Sources/*.swift`, copies `Sparkle.framework` into the app bundle, strips xattrs, ad-hoc signs the nested XPC services + framework + outer app in that order, and verifies the chain passes `codesign --verify --deep --strict`.
 
 ## Install
 
@@ -66,9 +66,10 @@ CI builds, signs, publishes the appcast, attaches the zip to the GitHub Release.
 ## Project layout
 
 ```
-Sources/main.swift              ~675 lines, the entire app
+Sources/                       Swift source split by concern
 Info.plist                      bundle metadata + Sparkle keys (SUFeedURL, SUPublicEDKey)
 build.sh                        vendors Sparkle, runs swiftc, codesigns the nested chain, verifies
+Package.swift                   IDE indexing only; the real build is build.sh
 .github/workflows/release.yml   tag-triggered: build, sign, regenerate appcast, publish
 Frameworks/                     gitignored; populated by build.sh on first run
 LICENSE                         MIT
@@ -76,7 +77,7 @@ README.md                       this file
 RELEASING.md                    release runbook (cut a release, rollback, key-management notes)
 ```
 
-Single-file Swift app. No Xcode project, no Swift Package Manager — Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. Local dev builds mark themselves so **Check for Released Version…** can offer the newest signed release zip even though the dev build's internal version is pinned above release builds. For real releases, push a tag.
+Small raw-`swiftc` Swift app. No Xcode project; `Package.swift` is for IDE indexing only. Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. Local dev builds mark themselves so **Check for Released Version…** can offer the newest signed release zip even though the dev build's internal version is pinned above release builds. For real releases, push a tag.
 
 ---
 
