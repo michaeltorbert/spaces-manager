@@ -19,7 +19,7 @@ final class SpaceRowView: NSView {
     private let actionStack = NSStackView()
     private let moveWindowAction = SpaceRowActionView(symbolName: "arrow.right.square",
                                                       accessibilityDescription: "Move Frontmost Window Here",
-                                                      tintColor: .controlAccentColor)
+                                                      tintColor: .systemGreen)
     private let renameAction = SpaceRowActionView(symbolName: "pencil",
                                                   accessibilityDescription: "Rename…",
                                                   tintColor: .controlAccentColor)
