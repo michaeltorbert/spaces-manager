@@ -539,7 +539,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.accessoryView = input
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = input
         NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async {
+            alert.window.makeFirstResponder(input)
+            input.selectText(nil)
+        }
         if alert.runModal() == .alertFirstButtonReturn {
             let trimmed = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             store.setName(trimmed, for: key)
