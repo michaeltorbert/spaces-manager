@@ -275,7 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 configureMaintenanceRow(
                     row: row,
                     item: maintenanceCheckItem,
-                    title: "Check for Released Version…",
+                    title: "Download Release Anyway…",
                     shortcut: "",
                     action: { [weak self] in self?.checkReleasedVersion(nil) },
                     itemTarget: self,
@@ -358,10 +358,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return (info["CFBundleVersion"] as? String) == "9999999"
     }
 
-    private var currentDisplayVersion: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
-    }
-
     private var appcastFeedURL: URL? {
         guard let value = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String else {
             return nil
@@ -369,10 +365,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return URL(string: value)
     }
 
+    private var releasesPageURL: URL {
+        URL(string: "https://github.com/michaeltorbert/spaces-manager/releases")!
+    }
+
     private func checkReleasedVersionForDevelopmentBuild(sender: Any?) {
         guard !releaseCheckInFlight else { return }
         guard let feedURL = appcastFeedURL else {
-            updaterController.checkForUpdates(sender)
+            showReleaseCheckFailed(sender: sender)
             return
         }
 
@@ -383,33 +383,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.releaseCheckInFlight = false
 
                 switch result {
-                case .success(let release)
-                    where ReleasedVersionChecker.compareVersions(
-                        release.displayVersion,
-                        self.currentDisplayVersion
-                    ) == .orderedDescending:
-                    self.showReleasedVersionAvailable(release)
+                case .success(let release):
+                    self.showSwitchToReleasePrompt(release)
                 default:
-                    self.updaterController.checkForUpdates(sender)
+                    self.showReleaseCheckFailed(sender: sender)
                 }
             }
         }
     }
 
-    private func showReleasedVersionAvailable(_ release: ReleasedVersion) {
+    private func showSwitchToReleasePrompt(_ release: ReleasedVersion) {
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "Released Version Available"
-        alert.informativeText = "SpacesManager \(release.displayVersion) is available. This local development build has a high internal build number, so Sparkle cannot replace it automatically. Download the released app to switch back to the live version."
+        alert.messageText = "Switch to Released Version?"
+        alert.informativeText = "This development build cannot update automatically because its internal build number is higher than released builds. Download the latest signed release and replace the app manually."
         alert.addButton(withTitle: "Download \(release.displayVersion)")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
-        if let url = release.downloadURL ?? release.infoURL {
-            NSWorkspace.shared.open(url)
-        } else {
-            NSSound.beep()
+        NSWorkspace.shared.open(release.downloadURL ?? release.infoURL ?? releasesPageURL)
+    }
+
+    private func showReleaseCheckFailed(sender: Any?) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Could Not Check Releases"
+        alert.informativeText = "SpacesManager could not read the release feed. Try again, or open the releases page manually."
+        alert.addButton(withTitle: "Try Again")
+        alert.addButton(withTitle: "Open Releases")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            checkReleasedVersionForDevelopmentBuild(sender: sender)
+        case .alertSecondButtonReturn:
+            NSWorkspace.shared.open(releasesPageURL)
+        default:
+            break
         }
     }
 
