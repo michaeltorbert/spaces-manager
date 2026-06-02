@@ -1,7 +1,12 @@
 #!/bin/zsh
 set -euo pipefail
 
-export PATH="/opt/homebrew/bin:/usr/bin:/bin:/Users/michaeltorbert/.local/bin"
+AGENT_PATH="${AGENT_PATH:-/opt/homebrew/bin:/usr/bin:/bin:/Users/michaeltorbert/.local/bin}"
+export PATH="$AGENT_PATH"
+
+GIT_BIN="${GIT_BIN:-$(command -v git 2>/dev/null || true)}"
+JQ_BIN="${JQ_BIN:-$(command -v jq 2>/dev/null || true)}"
+PERL_BIN="${PERL_BIN:-$(command -v perl 2>/dev/null || true)}"
 
 REPO="michaeltorbert/spaces-manager"
 BOT_LOGIN="claude-bot-mt[bot]"
@@ -10,7 +15,7 @@ EFFORT="${EFFORT:-max}"
 DRY_RUN="${DRY_RUN:-0}"
 MAX_DIFF_CHARS="${MAX_DIFF_CHARS:-120000}"
 CLAUDE_TIMEOUT_SECONDS="${CLAUDE_TIMEOUT_SECONDS:-600}"
-GITHUB_APP_CURL="${GITHUB_APP_CURL:-/opt/homebrew/bin/github-app-curl}"
+GITHUB_APP_CURL="${GITHUB_APP_CURL:-$(command -v github-app-curl 2>/dev/null || true)}"
 CLAUDE_BIN="${CLAUDE_BIN:-/Users/michaeltorbert/.local/bin/claude}"
 CLAUDE_TOKEN_FILE="${CLAUDE_TOKEN_FILE:-/Users/michaeltorbert/.config/claude/automation-oauth-token}"
 CLAUDE_HOME="${CLAUDE_HOME:-/private/tmp/claude-pr-review-home}"
@@ -44,10 +49,14 @@ summary comment linking to that review.
 
 Environment:
   DRY_RUN=1                    Generate Claude review JSON without posting.
-  MODEL=claude-opus-4-6         Claude model passed to claude-scheduled.
-  EFFORT=max                    Claude effort passed to claude-scheduled.
+  MODEL=claude-opus-4-6         Claude model passed to Claude Code.
+  EFFORT=max                    Claude effort passed to Claude Code.
   CLAUDE_TIMEOUT_SECONDS=600    Hard timeout for Claude generation.
   MAX_DIFF_CHARS=120000         Diff truncation limit for Claude prompt.
+  AGENT_PATH=...                PATH used to resolve helper executables.
+  GIT_BIN=...                   git executable path.
+  JQ_BIN=...                    jq executable path.
+  PERL_BIN=...                  perl executable path.
   CLAUDE_BIN=...                Claude executable path.
   CLAUDE_HOME=...               Writable HOME for Claude runtime state.
   CLAUDE_TOKEN_FILE=...         OAuth token file used for Claude automation.
@@ -56,12 +65,12 @@ EOF
 }
 
 trim() {
-  /usr/bin/perl -0pe 's/\A\s+//; s/\s+\z//'
+  "$PERL_BIN" -0pe 's/\A\s+//; s/\s+\z//'
 }
 
 json_string_field() {
   local field="$1"
-  /usr/bin/jq -er --arg field "$field" '.[$field] | strings'
+  "$JQ_BIN" -er --arg field "$field" '.[$field] | strings'
 }
 
 parse_pr_number() {
@@ -87,7 +96,7 @@ parse_pr_number() {
 
 verify_workspace_repo() {
   local remote_url repo_from_remote
-  remote_url="$(/opt/homebrew/bin/git remote get-url origin 2>/dev/null || true)"
+  remote_url="$("$GIT_BIN" remote get-url origin 2>/dev/null || true)"
   repo_from_remote="$(
     print -r -- "$remote_url" |
       /usr/bin/sed -E \
@@ -114,7 +123,7 @@ api_post() {
 require_tools() {
   local missing=0
 
-  for tool in /opt/homebrew/bin/git /usr/bin/jq /usr/bin/perl "$GITHUB_APP_CURL" "$CLAUDE_BIN"; do
+  for tool in "$GIT_BIN" "$JQ_BIN" "$PERL_BIN" "$GITHUB_APP_CURL" "$CLAUDE_BIN"; do
     if [ ! -x "$tool" ]; then
       print -r -- "Missing executable: $tool" >&2
       missing=1
@@ -142,7 +151,7 @@ claude_oauth_token() {
 format_actor_items() {
   local empty_label="$1"
   local jq_filter="$2"
-  /usr/bin/jq -r --arg empty_label "$empty_label" "$jq_filter"
+  "$JQ_BIN" -r --arg empty_label "$empty_label" "$jq_filter"
 }
 
 extract_claude_review_json() {
@@ -151,16 +160,16 @@ extract_claude_review_json() {
 
   result_text="$(
     print -r -- "$claude_json" |
-      /usr/bin/jq -r 'if type == "object" and has("result") then .result else . end' 2>/dev/null ||
+      "$JQ_BIN" -r 'if type == "object" and has("result") then .result else . end' 2>/dev/null ||
       print -r -- "$claude_json"
   )"
 
   review_json="$(
     print -r -- "$result_text" |
-      /usr/bin/perl -0pe 's/\A\s*```json\s*//i; s/\A\s*```\s*//; s/\s*```\s*\z//; s/\A\s+//; s/\s+\z//'
+      "$PERL_BIN" -0pe 's/\A\s*```json\s*//i; s/\A\s*```\s*//; s/\s*```\s*\z//; s/\A\s+//; s/\s+\z//'
   )"
 
-  if ! print -r -- "$review_json" | /usr/bin/jq -e '
+  if ! print -r -- "$review_json" | "$JQ_BIN" -e '
     type == "object"
     and (.event | type == "string")
     and (.body | type == "string" and length > 0)
@@ -209,18 +218,18 @@ API="https://api.github.com/repos/$REPO"
 log "fetching live PR #$PR_NUMBER from $REPO"
 pr_json="$(api_get "$API/pulls/$PR_NUMBER")"
 
-if print -r -- "$pr_json" | /usr/bin/jq -e 'has("message") and (.message == "Not Found")' >/dev/null; then
+if print -r -- "$pr_json" | "$JQ_BIN" -e 'has("message") and (.message == "Not Found")' >/dev/null; then
   print -r -- "PR #$PR_NUMBER was not found in $REPO" >&2
   exit 6
 fi
 
-pr_state="$(print -r -- "$pr_json" | /usr/bin/jq -r '.state // empty')"
-pr_title="$(print -r -- "$pr_json" | /usr/bin/jq -r '.title // empty')"
-pr_body="$(print -r -- "$pr_json" | /usr/bin/jq -r '.body // ""')"
-pr_author="$(print -r -- "$pr_json" | /usr/bin/jq -r '.user.login // empty')"
-head_ref="$(print -r -- "$pr_json" | /usr/bin/jq -r '.head.ref // empty')"
-head_sha="$(print -r -- "$pr_json" | /usr/bin/jq -r '.head.sha // empty')"
-base_ref="$(print -r -- "$pr_json" | /usr/bin/jq -r '.base.ref // empty')"
+pr_state="$(print -r -- "$pr_json" | "$JQ_BIN" -r '.state // empty')"
+pr_title="$(print -r -- "$pr_json" | "$JQ_BIN" -r '.title // empty')"
+pr_body="$(print -r -- "$pr_json" | "$JQ_BIN" -r '.body // ""')"
+pr_author="$(print -r -- "$pr_json" | "$JQ_BIN" -r '.user.login // empty')"
+head_ref="$(print -r -- "$pr_json" | "$JQ_BIN" -r '.head.ref // empty')"
+head_sha="$(print -r -- "$pr_json" | "$JQ_BIN" -r '.head.sha // empty')"
+base_ref="$(print -r -- "$pr_json" | "$JQ_BIN" -r '.base.ref // empty')"
 
 if [ "$pr_state" != "open" ]; then
   print -r -- "Refusing to review PR #$PR_NUMBER because it is '$pr_state', not open." >&2
@@ -237,12 +246,12 @@ agent_instructions="$(/usr/bin/sed -n '1,130p' AGENTS.md)"
 export MAX_DIFF_CHARS
 diff_text="$(
   print -r -- "$diff_text" |
-    /usr/bin/perl -0pe 'BEGIN { $max = int($ENV{"MAX_DIFF_CHARS"} || 120000) } if (length($_) > $max) { $_ = substr($_, 0, $max) . "\n[diff truncated at $max characters]\n" }'
+    "$PERL_BIN" -0pe 'BEGIN { $max = int($ENV{"MAX_DIFF_CHARS"} || 120000) } if (length($_) > $max) { $_ = substr($_, 0, $max) . "\n[diff truncated at $max characters]\n" }'
 )"
 
 files_summary="$(
   print -r -- "$files_json" |
-    /usr/bin/jq -r '
+    "$JQ_BIN" -r '
       if length == 0 then
         "(no files returned)"
       else
@@ -370,7 +379,7 @@ if ! claude_json="$(
     HOME="$CLAUDE_HOME" \
     XDG_CONFIG_HOME="$CLAUDE_CONFIG_HOME" \
     CLAUDE_CODE_OAUTH_TOKEN="$claude_token" \
-    /usr/bin/perl -e 'alarm int($ENV{"CLAUDE_TIMEOUT_SECONDS"} || 600); exec @ARGV' \
+    "$PERL_BIN" -e 'alarm int($ENV{"CLAUDE_TIMEOUT_SECONDS"} || 600); exec @ARGV' \
     "$CLAUDE_BIN" --no-session-persistence -p \
       --tools "" \
       --model "$MODEL" \
@@ -392,7 +401,7 @@ event="$(
 body="$(print -r -- "$review_json" | json_string_field body | trim)"
 top_level_summary="$(
   print -r -- "$review_json" |
-    /usr/bin/jq -r '.top_level_summary // ""' |
+    "$JQ_BIN" -r '.top_level_summary // ""' |
     trim
 )"
 
@@ -421,12 +430,12 @@ fi
 
 if [ "$DRY_RUN" = "1" ]; then
   log "dry run; not posting GitHub review"
-  print -r -- "$review_json" | /usr/bin/jq .
+  print -r -- "$review_json" | "$JQ_BIN" .
   exit 0
 fi
 
 review_payload="$(
-  /usr/bin/jq -nc \
+  "$JQ_BIN" -nc \
     --arg event "$event" \
     --arg body "$body" \
     '{event:$event, body:$body}'
@@ -434,9 +443,9 @@ review_payload="$(
 
 log "posting formal Claude review to PR #$PR_NUMBER"
 review_response="$(api_post "$API/pulls/$PR_NUMBER/reviews" -d "$review_payload")"
-review_id="$(print -r -- "$review_response" | /usr/bin/jq -r '.id // empty')"
-review_url="$(print -r -- "$review_response" | /usr/bin/jq -r '.html_url // empty')"
-review_actor="$(print -r -- "$review_response" | /usr/bin/jq -r '.user.login // empty')"
+review_id="$(print -r -- "$review_response" | "$JQ_BIN" -r '.id // empty')"
+review_url="$(print -r -- "$review_response" | "$JQ_BIN" -r '.html_url // empty')"
+review_actor="$(print -r -- "$review_response" | "$JQ_BIN" -r '.user.login // empty')"
 
 if [ -z "$review_id" ] || [ -z "$review_url" ]; then
   print -r -- "GitHub review post failed:" >&2
@@ -452,12 +461,12 @@ fi
 top_level_body="$top_level_summary
 
 Formal Claude review: $review_url"
-comment_payload="$(/usr/bin/jq -nc --arg body "$top_level_body" '{body:$body}')"
+comment_payload="$("$JQ_BIN" -nc --arg body "$top_level_body" '{body:$body}')"
 
 log "posting top-level Claude review summary to PR #$PR_NUMBER"
 comment_response="$(api_post "$API/issues/$PR_NUMBER/comments" -d "$comment_payload")"
-comment_url="$(print -r -- "$comment_response" | /usr/bin/jq -r '.html_url // empty')"
-comment_actor="$(print -r -- "$comment_response" | /usr/bin/jq -r '.user.login // empty')"
+comment_url="$(print -r -- "$comment_response" | "$JQ_BIN" -r '.html_url // empty')"
+comment_actor="$(print -r -- "$comment_response" | "$JQ_BIN" -r '.user.login // empty')"
 
 if [ -z "$comment_url" ]; then
   print -r -- "Top-level comment post failed:" >&2
@@ -472,13 +481,13 @@ fi
 
 verified_review="$(
   api_get "$API/pulls/$PR_NUMBER/reviews?per_page=100" |
-    /usr/bin/jq -r --arg id "$review_id" '
+    "$JQ_BIN" -r --arg id "$review_id" '
       .[] | select((.id | tostring) == $id) | [.user.login, .state, .html_url] | @tsv
     '
 )"
 verified_comment="$(
   api_get "$API/issues/$PR_NUMBER/comments?per_page=100" |
-    /usr/bin/jq -r --arg url "$comment_url" '
+    "$JQ_BIN" -r --arg url "$comment_url" '
       .[] | select(.html_url == $url) | [.user.login, .html_url] | @tsv
     '
 )"
