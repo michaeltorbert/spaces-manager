@@ -285,8 +285,9 @@ prior_conversation_comments="$(
 )"
 
 prompt_file="$(/usr/bin/mktemp)"
-cat > "$prompt_file" <<EOF
-You are Claude reviewing pull request #$PR_NUMBER in $REPO.
+{
+  print -r -- "You are Claude reviewing pull request #$PR_NUMBER in $REPO."
+  cat <<'CLAUDE_REVIEW_PROMPT'
 
 GitHub data in this prompt is live from the GitHub API. Local agent instructions
 come from AGENTS.md in the current workspace. Use only the provided data. Do not
@@ -312,33 +313,48 @@ Review rules:
   repeating the stale concern.
 
 Agent instructions:
-$agent_instructions
+CLAUDE_REVIEW_PROMPT
+  print -r -- "$agent_instructions"
+  cat <<'CLAUDE_REVIEW_PROMPT'
 
 PR:
-- title: $pr_title
-- author: $pr_author
-- base: $base_ref
-- head: $head_ref
-- head sha: $head_sha
+CLAUDE_REVIEW_PROMPT
+  print -r -- "- title: $pr_title"
+  print -r -- "- author: $pr_author"
+  print -r -- "- base: $base_ref"
+  print -r -- "- head: $head_ref"
+  print -r -- "- head sha: $head_sha"
+  cat <<'CLAUDE_REVIEW_PROMPT'
 
 PR body:
-$pr_body
+CLAUDE_REVIEW_PROMPT
+  print -r -- "$pr_body"
+  cat <<'CLAUDE_REVIEW_PROMPT'
 
 Changed files:
-$files_summary
+CLAUDE_REVIEW_PROMPT
+  print -r -- "$files_summary"
+  cat <<'CLAUDE_REVIEW_PROMPT'
 
 Prior reviews:
-$prior_reviews
+CLAUDE_REVIEW_PROMPT
+  print -r -- "$prior_reviews"
+  cat <<'CLAUDE_REVIEW_PROMPT'
 
 Prior inline review comments:
-$prior_review_comments
+CLAUDE_REVIEW_PROMPT
+  print -r -- "$prior_review_comments"
+  cat <<'CLAUDE_REVIEW_PROMPT'
 
 Prior top-level conversation comments:
-$prior_conversation_comments
+CLAUDE_REVIEW_PROMPT
+  print -r -- "$prior_conversation_comments"
+  cat <<'CLAUDE_REVIEW_PROMPT'
 
 Diff:
-$diff_text
-EOF
+CLAUDE_REVIEW_PROMPT
+  print -r -- "$diff_text"
+} > "$prompt_file"
 
 log "asking Claude to review PR #$PR_NUMBER"
 claude_token="$(claude_oauth_token)"
