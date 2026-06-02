@@ -1,31 +1,41 @@
 import AppKit
 
-// MARK: - Custom menu row (click body to switch; hover shows Rename pill)
+// MARK: - Custom menu row
 
 final class SpaceRowView: NSView {
     private let isActive: Bool
     private let canSwitch: Bool
     private let canManage: Bool
+    private let canMoveWindow: Bool
     private let onSwitch: () -> Void
+    private let onMoveWindow: () -> Void
     private let onRename: () -> Void
     private let onDelete: () -> Void
 
     private let iconView = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let checkmark = NSImageView()
+    private let actionStack = NSStackView()
+    private let moveWindowButton = NSButton()
+    private let renameButton = NSButton()
+    private let deleteButton = NSButton()
 
     private var trackingArea: NSTrackingArea?
     private var isHovered = false
 
     init(name: String, iconImage: NSImage?,
          isActive: Bool, canSwitch: Bool, canManage: Bool,
+         canMoveWindow: Bool,
          onSwitch: @escaping () -> Void,
+         onMoveWindow: @escaping () -> Void,
          onRename: @escaping () -> Void,
          onDelete: @escaping () -> Void) {
         self.isActive = isActive
         self.canSwitch = canSwitch
         self.canManage = canManage
+        self.canMoveWindow = canMoveWindow
         self.onSwitch = onSwitch
+        self.onMoveWindow = onMoveWindow
         self.onRename = onRename
         self.onDelete = onDelete
         super.init(frame: NSRect(x: 0, y: 0, width: 240, height: 26))
@@ -60,6 +70,39 @@ final class SpaceRowView: NSView {
         checkmark.translatesAutoresizingMaskIntoConstraints = false
         addSubview(checkmark)
 
+        configureActionButton(
+            moveWindowButton,
+            symbolName: "arrow.right.square",
+            accessibilityDescription: "Move Frontmost Window Here",
+            action: #selector(moveWindowClicked)
+        )
+        moveWindowButton.toolTip = "Move frontmost window here"
+
+        configureActionButton(
+            renameButton,
+            symbolName: "pencil",
+            accessibilityDescription: "Rename Space",
+            action: #selector(renameClicked)
+        )
+        renameButton.toolTip = "Rename space"
+
+        configureActionButton(
+            deleteButton,
+            symbolName: "trash",
+            accessibilityDescription: "Delete Space",
+            action: #selector(deleteClicked)
+        )
+        deleteButton.toolTip = "Delete space"
+
+        actionStack.orientation = .horizontal
+        actionStack.alignment = .centerY
+        actionStack.spacing = 7
+        actionStack.translatesAutoresizingMaskIntoConstraints = false
+        actionStack.addArrangedSubview(moveWindowButton)
+        actionStack.addArrangedSubview(renameButton)
+        actionStack.addArrangedSubview(deleteButton)
+        addSubview(actionStack)
+
         NSLayoutConstraint.activate([
             iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -68,13 +111,17 @@ final class SpaceRowView: NSView {
 
             nameLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
             nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: checkmark.leadingAnchor, constant: -8),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: actionStack.leadingAnchor, constant: -8),
 
             checkmark.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             checkmark.centerYAnchor.constraint(equalTo: centerYAnchor),
             checkmark.widthAnchor.constraint(equalToConstant: 14),
             checkmark.heightAnchor.constraint(equalToConstant: 14),
+
+            actionStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            actionStack.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+        updateHoverState()
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -89,20 +136,24 @@ final class SpaceRowView: NSView {
 
     override func mouseEntered(with event: NSEvent) {
         isHovered = true
-        needsDisplay = true
+        updateHoverState()
     }
 
     override func mouseExited(with event: NSEvent) {
         isHovered = false
-        needsDisplay = true
+        updateHoverState()
     }
 
     override func mouseUp(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if !actionStack.isHidden && actionStack.frame.contains(point) {
+            return
+        }
         enclosingMenuItem?.menu?.cancelTracking()
         if canSwitch && !isActive { onSwitch() }
     }
 
-    /// Build and show the Rename / Delete context menu anchored at the given
+    /// Build and show the row context menu anchored at the given
     /// screen-space point. Called by both the NSView rightMouseDown override
     /// (when AppKit delivers it) and by the menu-scoped NSEvent monitor in
     /// AppDelegate (when AppKit doesn't, as on macOS Tahoe — see #11).
@@ -112,6 +163,15 @@ final class SpaceRowView: NSView {
         guard canManage else { return false }
 
         let ctx = NSMenu()
+        if canMoveWindow {
+            let moveWindow = NSMenuItem(title: "Move Frontmost Window Here",
+                                        action: #selector(moveWindowClicked),
+                                        keyEquivalent: "")
+            moveWindow.target = self
+            ctx.addItem(moveWindow)
+            ctx.addItem(NSMenuItem.separator())
+        }
+
         let rename = NSMenuItem(title: "Rename…",
                                 action: #selector(renameClicked),
                                 keyEquivalent: "")
@@ -145,6 +205,11 @@ final class SpaceRowView: NSView {
         showContextMenu(from: event)
     }
 
+    @objc private func moveWindowClicked() {
+        enclosingMenuItem?.menu?.cancelTracking()
+        onMoveWindow()
+    }
+
     @objc private func renameClicked() {
         enclosingMenuItem?.menu?.cancelTracking()
         onRename()
@@ -161,5 +226,32 @@ final class SpaceRowView: NSView {
                                 xRadius: 4, yRadius: 4)
         NSColor.unemphasizedSelectedContentBackgroundColor.setFill()
         path.fill()
+    }
+
+    private func configureActionButton(_ button: NSButton,
+                                       symbolName: String,
+                                       accessibilityDescription: String,
+                                       action: Selector) {
+        button.image = NSImage(
+            systemSymbolName: symbolName,
+            accessibilityDescription: accessibilityDescription
+        )
+        button.imagePosition = .imageOnly
+        button.isBordered = false
+        button.bezelStyle = .regularSquare
+        button.setButtonType(.momentaryChange)
+        button.contentTintColor = .tertiaryLabelColor
+        button.target = self
+        button.action = action
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: 18).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 18).isActive = true
+    }
+
+    private func updateHoverState() {
+        actionStack.isHidden = !isHovered || !canManage
+        moveWindowButton.isHidden = !canMoveWindow
+        checkmark.isHidden = !isActive || (isHovered && canManage)
+        needsDisplay = true
     }
 }

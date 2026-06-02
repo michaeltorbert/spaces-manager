@@ -183,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let displayed = count > 0 ? "\(baseName) (\(count))" : baseName
                 let canSwitch = !sp.displayID.isEmpty && sp.id64 != 0
                 let canManage = !sp.isFullscreen && sp.id64 != 0
+                let canMoveWindow = canManage
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
                     name: displayed,
@@ -190,7 +191,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     isActive: isActive,
                     canSwitch: canSwitch,
                     canManage: canManage,
+                    canMoveWindow: canMoveWindow,
                     onSwitch: { [weak self] in self?.switchTo(space: sp) },
+                    onMoveWindow: { [weak self] in self?.moveFrontmostWindow(to: sp) },
                     onRename: { [weak self] in self?.promptRename(key: sp.key) },
                     onDelete: { [weak self] in self?.confirmDelete(space: sp, name: baseName) }
                 )
@@ -353,6 +356,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .needsAccessibility:
             requestSwitchAccessibility()
         case .unavailable:
+            NSSound.beep()
+        }
+    }
+
+    private func moveFrontmostWindow(to space: Space) {
+        switch SpaceWindowMover.moveFrontmostWindow(to: space) {
+        case .moved, .alreadyThere:
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.refresh()
+            }
+        case .noFrontmostApp, .noWindow, .unsupportedSpace:
             NSSound.beep()
         }
     }
