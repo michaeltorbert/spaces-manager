@@ -5,7 +5,6 @@ import AppKit
 enum SpaceWindowMoveResult {
     case moved
     case alreadyThere
-    case noFrontmostApp
     case noWindow
     case unsupportedSpace
     case failed

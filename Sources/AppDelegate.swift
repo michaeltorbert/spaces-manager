@@ -470,7 +470,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 self?.refresh()
             }
-        case .noFrontmostApp, .noWindow, .unsupportedSpace, .failed:
+        case .noWindow, .unsupportedSpace, .failed:
             NSSound.beep()
         }
     }
