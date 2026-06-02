@@ -212,8 +212,9 @@ final class SpaceRowView: NSView {
     }
 
     @objc private func renameClicked() {
+        let action = onRename
         enclosingMenuItem?.menu?.cancelTracking()
-        onRename()
+        DispatchQueue.main.async { action() }
     }
 
     @objc private func deleteClicked() {
