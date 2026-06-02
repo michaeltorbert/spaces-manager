@@ -19,7 +19,7 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 - **Rename All Spaces…** opens a window for bulk editing.
 - **Names persist** in `UserDefaults` under bundle id `local.spacesmanager`, keyed by each space's UUID (or a stable per-display fallback key when macOS returns an empty UUID).
 - **Self-updates** via Sparkle: a daily background check + a "Check for Updates…" menu item in release builds. Updates are verified with an EdDSA signature embedded in the app; only releases signed with the matching private key will install.
-- **Hold Option while the menu is open** to swap maintenance actions: local dev builds change "Check for Updates…" to "Check for Released Version…", and "Quit SpacesManager" changes to "Relaunch SpacesManager."
+- **Hold Option while the menu is open** to swap maintenance actions: local dev builds change "Check for Updates…" to "Download Release Anyway…", and "Quit SpacesManager" changes to "Relaunch SpacesManager."
 
 ---
 
@@ -80,7 +80,7 @@ README.md                       this file
 RELEASING.md                    release runbook (cut a release, rollback, key-management notes)
 ```
 
-Small raw-`swiftc` Swift app. No Xcode project; `Package.swift` is for IDE indexing only. Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. If the app icon changes, regenerate `Assets/AppIcon.svg` and `Assets/AppIcon.icns` with `Assets/build-icon.sh`. Local dev builds mark themselves so **Check for Released Version…** can offer the newest signed release zip even though the dev build's internal version is pinned above release builds; hold Option while the menu is open to swap **Check for Updates…** to that dev-only action. For real releases, push a tag.
+Small raw-`swiftc` Swift app. No Xcode project; `Package.swift` is for IDE indexing only. Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. If the app icon changes, regenerate `Assets/AppIcon.svg` and `Assets/AppIcon.icns` with `Assets/build-icon.sh`. Local dev builds mark themselves so **Download Release Anyway…** can offer the newest signed release zip even though the dev build's internal version is pinned above release builds; hold Option while the menu is open to swap **Check for Updates…** to that dev-only action. For real releases, push a tag.
 
 ---
 
