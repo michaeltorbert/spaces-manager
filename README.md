@@ -13,13 +13,13 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 - **Menu bar item** shows the current space's custom name (falls back to "Desktop N").
 - **Click the menu bar item** to see all spaces grouped by display name, with the active one marked.
 - **Click a space row** to switch to it. The first switch prompts for Accessibility permission so SpacesManager can send the same Dock swipe event as a trackpad space switch. Full-screen app spaces appear in the menu and can be targeted too.
-- **Hover a normal desktop space row** for quick buttons: move the frontmost window there, rename, or delete the space (with confirm). Right-click still opens the same management actions.
+- **Hover a normal desktop space row** for quick buttons: move the frontmost window there, rename, or delete the space. Delete asks for confirmation first.
 - **Brief HUD** fades in at the top of the screen on every space switch, showing the name.
 - **Rename Current Space…** quick action in the menu.
 - **Rename All Spaces…** opens a window for bulk editing.
 - **Names persist** in `UserDefaults` under bundle id `local.spacesmanager`, keyed by each space's UUID (or a stable per-display fallback key when macOS returns an empty UUID).
-- **Self-updates** via Sparkle: a daily background check + a "Check for Updates…" menu item. Updates are verified with an EdDSA signature embedded in the app; only releases signed with the matching private key will install.
-- **Relaunch SpacesManager** from the menu after replacing a local test build.
+- **Self-updates** via Sparkle: a daily background check + a "Check for Updates…" menu item in release builds. Updates are verified with an EdDSA signature embedded in the app; only releases signed with the matching private key will install.
+- **Hold Option while the menu is open** to swap maintenance actions: local dev builds change "Check for Updates…" to "Check for Released Version…", and "Quit SpacesManager" changes to "Relaunch SpacesManager."
 
 ---
 
@@ -80,7 +80,7 @@ README.md                       this file
 RELEASING.md                    release runbook (cut a release, rollback, key-management notes)
 ```
 
-Small raw-`swiftc` Swift app. No Xcode project; `Package.swift` is for IDE indexing only. Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. If the app icon changes, regenerate `Assets/AppIcon.svg` and `Assets/AppIcon.icns` with `Assets/build-icon.sh`. Local dev builds mark themselves so **Check for Released Version…** can offer the newest signed release zip even though the dev build's internal version is pinned above release builds. For real releases, push a tag.
+Small raw-`swiftc` Swift app. No Xcode project; `Package.swift` is for IDE indexing only. Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. If the app icon changes, regenerate `Assets/AppIcon.svg` and `Assets/AppIcon.icns` with `Assets/build-icon.sh`. Local dev builds mark themselves so **Check for Released Version…** can offer the newest signed release zip even though the dev build's internal version is pinned above release builds; hold Option while the menu is open to swap **Check for Updates…** to that dev-only action. For real releases, push a tag.
 
 ---
 

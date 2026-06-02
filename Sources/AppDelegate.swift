@@ -12,13 +12,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var editorFields: [(key: String, field: NSTextField)] = []
     private var hasShownSwitchPermissionAlert = false
     private var releaseCheckInFlight = false
+    private weak var maintenanceCheckItem: NSMenuItem?
+    private weak var maintenanceQuitItem: NSMenuItem?
+    private weak var maintenanceCheckRow: MenuCommandRowView?
+    private weak var maintenanceQuitRow: MenuCommandRowView?
+    private var maintenanceOptionLocalMonitor: Any?
+    private var maintenanceOptionPollTimer: Timer?
+    private var lastMaintenanceOptionDown: Bool?
     private let updaterController = SPUStandardUpdaterController(
         startingUpdater: true,
         updaterDelegate: nil,
         userDriverDelegate: nil
     )
     private var hotkeys: GlobalHotkeys?
-    private var menuRightClickMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -95,55 +101,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: NSMenuDelegate
 
-    func menuWillOpen(_ menu: NSMenu) {
-        // AppKit doesn't reliably deliver rightMouseDown to a custom
-        // NSMenuItem.view on macOS Tahoe, so the row's override never fires.
-        // A scoped NSEvent local monitor installed while the menu is open
-        // catches the click, hit-tests it against each SpaceRowView, and
-        // routes to the same context menu the row would show itself. See #11.
-        if menuRightClickMonitor == nil {
-            menuRightClickMonitor = NSEvent.addLocalMonitorForEvents(
-                matching: [.rightMouseDown]
-            ) { [weak self, weak menu] event in
-                guard let self, let menu else { return event }
-                if self.routeRightClickToRow(event: event, menu: menu) {
-                    return nil
-                }
-                return event
-            }
-        }
-    }
-
-    func menuDidClose(_ menu: NSMenu) {
-        if let monitor = menuRightClickMonitor {
-            NSEvent.removeMonitor(monitor)
-            menuRightClickMonitor = nil
-        }
-    }
-
-    private func routeRightClickToRow(event: NSEvent, menu: NSMenu) -> Bool {
-        for item in menu.items {
-            guard let row = item.view as? SpaceRowView,
-                  let win = row.window,
-                  win == event.window
-            else { continue }
-            let pointInRow = row.convert(event.locationInWindow, from: nil)
-            if row.bounds.contains(pointInRow) {
-                row.showContextMenu(from: event)
-                return true
-            }
-        }
-        return false
-    }
-
     private func displayName(for displayID: String,
                              at index: Int,
                              in displayNamesByID: [String: String]) -> String {
         displayNamesByID[displayID] ?? "Display \(index + 1)"
     }
 
+    func menuWillOpen(_ menu: NSMenu) {
+        startMaintenanceOptionTracking()
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        stopMaintenanceOptionTracking()
+        updateMaintenanceItems(optionDown: false, force: true)
+        lastMaintenanceOptionDown = nil
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        lastMaintenanceOptionDown = nil
         let snap = SpacesProvider.snapshot()
         lastActiveKey = snap.activeKey
         let grouped = Dictionary(grouping: snap.spaces, by: { $0.displayID })
@@ -182,15 +158,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let count = sp.isFullscreen ? 0 : (windowSummary?.count ?? 0)
                 let displayed = count > 0 ? "\(baseName) (\(count))" : baseName
                 let canSwitch = !sp.displayID.isEmpty && sp.id64 != 0
-                let canManage = !sp.isFullscreen && sp.id64 != 0
-                let canMoveWindow = canManage
+                let canRename = canRename(space: sp)
+                let canDelete = canDelete(space: sp)
+                let canMoveWindow = canDelete
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
                     name: displayed,
                     iconImage: dominantApp?.icon,
                     isActive: isActive,
                     canSwitch: canSwitch,
-                    canManage: canManage,
+                    canRename: canRename,
+                    canDelete: canDelete,
                     canMoveWindow: canMoveWindow,
                     onSwitch: { [weak self] in self?.switchTo(space: sp) },
                     onMoveWindow: { [weak self] in self?.moveFrontmostWindow(to: sp) },
@@ -216,33 +194,156 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let checkForUpdates = NSMenuItem(
-            title: isLocalDevelopmentBuild
-                ? "Check for Released Version…"
-                : "Check for Updates…",
-            action: #selector(checkForUpdates(_:)),
-            keyEquivalent: ""
-        )
+        let checkForUpdates = NSMenuItem(title: "Check for Updates…",
+                                         action: #selector(checkForUpdates(_:)),
+                                         keyEquivalent: "")
         checkForUpdates.target = self
+        let checkForUpdatesRow = MenuCommandRowView(
+            title: "Check for Updates…",
+            shortcut: "",
+            action: { [weak self] in self?.checkForUpdates(nil) }
+        )
+        checkForUpdates.view = checkForUpdatesRow
         menu.addItem(checkForUpdates)
-
-        let relaunch = NSMenuItem(title: "Relaunch SpacesManager",
-                                  action: #selector(relaunchSpacesManager),
-                                  keyEquivalent: "")
-        relaunch.target = self
-        menu.addItem(relaunch)
+        maintenanceCheckItem = checkForUpdates
+        maintenanceCheckRow = checkForUpdatesRow
 
         let quit = NSMenuItem(title: "Quit SpacesManager",
                               action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")
+        quit.target = NSApp
+        let quitRow = MenuCommandRowView(
+            title: "Quit SpacesManager",
+            shortcut: "⌘ Q",
+            action: { NSApp.terminate(nil) }
+        )
+        quit.view = quitRow
         menu.addItem(quit)
+        maintenanceQuitItem = quit
+        maintenanceQuitRow = quitRow
+
+        updateMaintenanceItems(optionDown: isOptionKeyDown, force: true)
+    }
+
+    private func startMaintenanceOptionTracking() {
+        stopMaintenanceOptionTracking()
+
+        maintenanceOptionLocalMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.flagsChanged]
+        ) { [weak self] event in
+            self?.updateMaintenanceItems(
+                optionDown: event.modifierFlags.contains(.option),
+                force: true
+            )
+            return event
+        }
+
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            self?.updateMaintenanceItems(
+                optionDown: self?.isOptionKeyDown ?? false
+            )
+        }
+        timer.tolerance = 0.02
+        maintenanceOptionPollTimer = timer
+        RunLoop.main.add(timer, forMode: .eventTracking)
+        RunLoop.main.add(timer, forMode: .common)
+
+        updateMaintenanceItems(optionDown: isOptionKeyDown, force: true)
+    }
+
+    private func stopMaintenanceOptionTracking() {
+        if let monitor = maintenanceOptionLocalMonitor {
+            NSEvent.removeMonitor(monitor)
+            maintenanceOptionLocalMonitor = nil
+        }
+        maintenanceOptionPollTimer?.invalidate()
+        maintenanceOptionPollTimer = nil
+    }
+
+    private var isOptionKeyDown: Bool {
+        NSEvent.modifierFlags.contains(.option)
+            || CGEventSource.flagsState(.combinedSessionState).contains(.maskAlternate)
+            || CGEventSource.flagsState(.hidSystemState).contains(.maskAlternate)
+    }
+
+    private func updateMaintenanceItems(optionDown: Bool, force: Bool = false) {
+        guard force || lastMaintenanceOptionDown != optionDown else { return }
+        lastMaintenanceOptionDown = optionDown
+
+        if let row = maintenanceCheckRow {
+            if optionDown && isLocalDevelopmentBuild {
+                configureMaintenanceRow(
+                    row: row,
+                    item: maintenanceCheckItem,
+                    title: "Check for Released Version…",
+                    shortcut: "",
+                    action: { [weak self] in self?.checkReleasedVersion(nil) },
+                    itemTarget: self,
+                    itemAction: #selector(checkReleasedVersion(_:)),
+                    keyEquivalent: ""
+                )
+            } else {
+                configureMaintenanceRow(
+                    row: row,
+                    item: maintenanceCheckItem,
+                    title: "Check for Updates…",
+                    shortcut: "",
+                    action: { [weak self] in self?.checkForUpdates(nil) },
+                    itemTarget: self,
+                    itemAction: #selector(checkForUpdates(_:)),
+                    keyEquivalent: ""
+                )
+            }
+        }
+
+        if let row = maintenanceQuitRow {
+            if optionDown {
+                configureMaintenanceRow(
+                    row: row,
+                    item: maintenanceQuitItem,
+                    title: "Relaunch SpacesManager",
+                    shortcut: "",
+                    action: { [weak self] in self?.relaunchSpacesManager() },
+                    itemTarget: self,
+                    itemAction: #selector(relaunchSpacesManager),
+                    keyEquivalent: ""
+                )
+            } else {
+                configureMaintenanceRow(
+                    row: row,
+                    item: maintenanceQuitItem,
+                    title: "Quit SpacesManager",
+                    shortcut: "⌘ Q",
+                    action: { NSApp.terminate(nil) },
+                    itemTarget: NSApp,
+                    itemAction: #selector(NSApplication.terminate(_:)),
+                    keyEquivalent: "q"
+                )
+            }
+        }
+    }
+
+    private func configureMaintenanceRow(row: MenuCommandRowView,
+                                         item: NSMenuItem?,
+                                         title: String,
+                                         shortcut: String,
+                                         action: @escaping () -> Void,
+                                         itemTarget: AnyObject?,
+                                         itemAction: Selector,
+                                         keyEquivalent: String) {
+        row.update(title: title, shortcut: shortcut, action: action)
+        item?.title = title
+        item?.target = itemTarget
+        item?.action = itemAction
+        item?.keyEquivalent = keyEquivalent
+        item?.keyEquivalentModifierMask = keyEquivalent.isEmpty ? [] : [.command]
     }
 
     @objc private func checkForUpdates(_ sender: Any?) {
-        guard isLocalDevelopmentBuild else {
-            updaterController.checkForUpdates(sender)
-            return
-        }
+        updaterController.checkForUpdates(sender)
+    }
+
+    @objc private func checkReleasedVersion(_ sender: Any?) {
         checkReleasedVersionForDevelopmentBuild(sender: sender)
     }
 
@@ -371,6 +472,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private func canRename(space: Space) -> Bool {
+        !space.isFullscreen && space.regularIndex > 0 && !space.key.isEmpty
+    }
+
+    private func canDelete(space: Space) -> Bool {
+        canRename(space: space) && space.id64 != 0
+    }
+
     private func requestSwitchAccessibility() {
         guard !AXIsProcessTrusted() else { return }
         guard !hasShownSwitchPermissionAlert else {
@@ -392,7 +501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func confirmDelete(space: Space, name: String) {
-        guard space.id64 != 0 else { return }
+        guard canDelete(space: space) else { return }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Delete \(name)?"
@@ -549,5 +658,111 @@ extension AppDelegate: NSWindowDelegate {
             editorWindow = nil
             editorFields = []
         }
+    }
+}
+
+private final class MenuCommandRowView: NSView {
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let shortcutLabel = NSTextField(labelWithString: "")
+    private var shortcutWidthConstraint: NSLayoutConstraint!
+    private var action: () -> Void
+    private var trackingArea: NSTrackingArea?
+    private var isHovered = false
+
+    init(title: String, shortcut: String, action: @escaping () -> Void) {
+        self.action = action
+        super.init(frame: NSRect(x: 0, y: 0, width: 300, height: 30))
+        wantsLayer = true
+        autoresizingMask = [.width]
+
+        titleLabel.stringValue = title
+        titleLabel.font = .menuFont(ofSize: 0)
+        titleLabel.textColor = .labelColor
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.maximumNumberOfLines = 1
+        titleLabel.usesSingleLineMode = true
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        shortcutLabel.stringValue = shortcut
+        shortcutLabel.font = .menuFont(ofSize: 0)
+        shortcutLabel.textColor = .tertiaryLabelColor
+        shortcutLabel.alignment = .right
+        shortcutLabel.lineBreakMode = .byClipping
+        shortcutLabel.maximumNumberOfLines = 1
+        shortcutLabel.usesSingleLineMode = true
+        shortcutLabel.isHidden = shortcut.isEmpty
+        shortcutLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(shortcutLabel)
+
+        shortcutWidthConstraint = shortcutLabel.widthAnchor.constraint(
+            equalToConstant: shortcut.isEmpty ? 0 : 48
+        )
+
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: shortcutLabel.leadingAnchor, constant: -12),
+
+            shortcutLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            shortcutLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            shortcutWidthConstraint,
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: 300, height: 30)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(point) ? self : nil
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let opts: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
+        trackingArea = NSTrackingArea(rect: bounds, options: opts, owner: self, userInfo: nil)
+        addTrackingArea(trackingArea!)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        needsDisplay = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        let currentAction = action
+        enclosingMenuItem?.menu?.cancelTracking()
+        DispatchQueue.main.async { currentAction() }
+    }
+
+    func update(title: String, shortcut: String, action: @escaping () -> Void) {
+        if titleLabel.stringValue != title {
+            titleLabel.stringValue = title
+        }
+        if shortcutLabel.stringValue != shortcut {
+            shortcutLabel.stringValue = shortcut
+        }
+        let hasShortcut = !shortcut.isEmpty
+        shortcutLabel.isHidden = !hasShortcut
+        shortcutWidthConstraint.constant = hasShortcut ? 48 : 0
+        self.action = action
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard isHovered else { return }
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 1),
+                                xRadius: 4,
+                                yRadius: 4)
+        NSColor.unemphasizedSelectedContentBackgroundColor.setFill()
+        path.fill()
     }
 }
