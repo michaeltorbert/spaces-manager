@@ -28,19 +28,57 @@ those may appear as the personal account.
 
 ## Default agent workflow
 
-Unless the user explicitly asks for a different flow:
+Unless the user explicitly asks for a different flow, use paired implementation
+and review:
 
-1. Claude writes the implementation code.
-2. Claude opens the pull request using the Claude GitHub App identity.
-3. Codex reviews the pull request using the Codex GitHub App identity.
+1. The agent currently assigned to write the implementation owns the code
+   changes and any follow-up revisions.
+2. The other agent reviews the implementation before the work is considered
+   complete.
+3. If Claude writes the implementation or opens the pull request, Codex reviews
+   using the Codex GitHub App identity.
+4. If Codex writes the implementation or opens the pull request, Claude reviews
+   using the Claude GitHub App identity.
 
-Keep implementation and review roles separate. Codex should not push fixes to a
-Claude-authored PR unless the user explicitly asks Codex to take over the
-implementation work.
+Keep implementation and review roles separate. The reviewing agent should not
+push fixes to the writing agent's branch or PR unless the user explicitly asks
+the reviewer to take over the implementation work.
+
+When Codex writes implementation code, Codex should automatically request a
+Claude review before declaring the work complete. Codex should respond to
+Claude's actionable review feedback, revise its own code when appropriate, and
+repeat the review loop until Codex and Claude agree there are no remaining
+material issues, or until Codex identifies a concrete blocker that requires user
+input.
+
+For PR-based work, prefer GitHub as the review handoff surface. The reviewing
+agent should post its review to the pull request using its GitHub App identity,
+and the writing agent should read the review, inline comments, and top-level
+conversation comments from GitHub before deciding what to revise. Direct CLI or
+chat output is acceptable for local pre-PR review, but it should not replace the
+GitHub review when a PR exists.
+
+When Codex needs Claude to review a PR, use the repo-local helper:
+
+```sh
+scripts/claude-pr-review.sh <pr-number-or-url>
+```
+
+The helper verifies the workspace remote is `michaeltorbert/spaces-manager`,
+asks Claude for a structured review, posts the formal review with
+`github-app-curl --profile claude`, posts a top-level PR summary comment, and
+verifies both GitHub URLs before exiting successfully.
 
 When an agent creates a pull request, rename that agent's active conversation
 or thread after the PR number is known. Include the PR number and issue number
 when available, for example `PR #36 for issue #29`.
+
+When Claude reviews a pull request:
+- Submit the formal GitHub PR review using `claude-bot-mt[bot]`.
+- Also leave a short top-level PR conversation comment summarizing the review
+  result for human visibility.
+- Link the top-level comment to the formal review and any key inline
+  discussion.
 
 When Codex reviews a pull request:
 - Submit the formal GitHub PR review using `codex-bot-mt[bot]`.
