@@ -1,8 +1,6 @@
 #!/bin/zsh
 set -euo pipefail
 
-export HOME="/Users/michaeltorbert"
-export XDG_CONFIG_HOME="$HOME/.config"
 export PATH="/opt/homebrew/bin:/usr/bin:/bin:/Users/michaeltorbert/.local/bin"
 
 REPO="michaeltorbert/spaces-manager"
@@ -13,7 +11,10 @@ DRY_RUN="${DRY_RUN:-0}"
 MAX_DIFF_CHARS="${MAX_DIFF_CHARS:-120000}"
 CLAUDE_TIMEOUT_SECONDS="${CLAUDE_TIMEOUT_SECONDS:-600}"
 GITHUB_APP_CURL="${GITHUB_APP_CURL:-/opt/homebrew/bin/github-app-curl}"
-CLAUDE_BIN="${CLAUDE_BIN:-/Users/michaeltorbert/.local/bin/claude-scheduled}"
+CLAUDE_BIN="${CLAUDE_BIN:-/Users/michaeltorbert/.local/bin/claude}"
+CLAUDE_TOKEN_FILE="${CLAUDE_TOKEN_FILE:-/Users/michaeltorbert/.config/claude/automation-oauth-token}"
+CLAUDE_HOME="${CLAUDE_HOME:-/private/tmp/claude-pr-review-home}"
+CLAUDE_CONFIG_HOME="${CLAUDE_CONFIG_HOME:-$CLAUDE_HOME/.config}"
 
 timestamp() {
   /bin/date -u '+%Y-%m-%dT%H:%M:%SZ'
@@ -22,6 +23,16 @@ timestamp() {
 log() {
   print -r -- "[$(timestamp)] $*"
 }
+
+prompt_file=""
+
+cleanup_prompt_file() {
+  if [ -n "$prompt_file" ]; then
+    /bin/rm -f "$prompt_file"
+  fi
+}
+
+trap cleanup_prompt_file EXIT
 
 usage() {
   cat <<'EOF'
@@ -38,6 +49,8 @@ Environment:
   CLAUDE_TIMEOUT_SECONDS=600    Hard timeout for Claude generation.
   MAX_DIFF_CHARS=120000         Diff truncation limit for Claude prompt.
   CLAUDE_BIN=...                Claude executable path.
+  CLAUDE_HOME=...               Writable HOME for Claude runtime state.
+  CLAUDE_TOKEN_FILE=...         OAuth token file used for Claude automation.
   GITHUB_APP_CURL=...           github-app-curl executable path.
 EOF
 }
@@ -108,8 +121,21 @@ require_tools() {
     fi
   done
 
+  if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ ! -r "$CLAUDE_TOKEN_FILE" ]; then
+    print -r -- "Missing readable Claude token file: $CLAUDE_TOKEN_FILE" >&2
+    missing=1
+  fi
+
   if [ "$missing" -ne 0 ]; then
     exit 4
+  fi
+}
+
+claude_oauth_token() {
+  if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    print -r -- "$CLAUDE_CODE_OAUTH_TOKEN"
+  else
+    /usr/bin/tr -d '\r\n' < "$CLAUDE_TOKEN_FILE"
   fi
 }
 
@@ -315,20 +341,31 @@ $diff_text
 EOF
 
 log "asking Claude to review PR #$PR_NUMBER"
+claude_token="$(claude_oauth_token)"
+if [ -z "$claude_token" ]; then
+  print -r -- "Claude OAuth token is empty." >&2
+  exit 8
+fi
+
+/bin/mkdir -p "$CLAUDE_HOME" "$CLAUDE_CONFIG_HOME"
+
 if ! claude_json="$(
   CLAUDE_TIMEOUT_SECONDS="$CLAUDE_TIMEOUT_SECONDS" \
+    HOME="$CLAUDE_HOME" \
+    XDG_CONFIG_HOME="$CLAUDE_CONFIG_HOME" \
+    CLAUDE_CODE_OAUTH_TOKEN="$claude_token" \
     /usr/bin/perl -e 'alarm int($ENV{"CLAUDE_TIMEOUT_SECONDS"} || 600); exec @ARGV' \
-    "$CLAUDE_BIN" -p \
+    "$CLAUDE_BIN" --no-session-persistence -p \
       --tools "" \
       --model "$MODEL" \
       --effort "$EFFORT" \
       --output-format json < "$prompt_file"
 )"; then
-  /bin/rm -f "$prompt_file"
   print -r -- "Claude review generation failed or timed out." >&2
   exit 8
 fi
 /bin/rm -f "$prompt_file"
+prompt_file=""
 
 review_json="$(extract_claude_review_json "$claude_json")"
 event="$(
