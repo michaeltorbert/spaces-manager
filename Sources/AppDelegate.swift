@@ -161,9 +161,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let canSwitch = !sp.displayID.isEmpty && sp.id64 != 0
                 let canRename = canRename(space: sp)
                 let canDelete = canDelete(space: sp)
-                let canMoveWindow = canDelete
-                    && !isActive
-                    && movableFrontWindowSpaceIDs?.contains(sp.id64) == false
+                let canMoveWindow = canMoveWindow(to: sp,
+                                                  isActive: isActive,
+                                                  movableFrontWindowSpaceIDs: movableFrontWindowSpaceIDs)
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
                     name: displayed,
@@ -493,6 +493,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func canDelete(space: Space) -> Bool {
         canRename(space: space) && space.id64 != 0
+    }
+
+    private func canMoveWindow(to space: Space,
+                               isActive: Bool,
+                               movableFrontWindowSpaceIDs: Set<CGSSpaceID>?) -> Bool {
+        !isActive
+            && !space.isFullscreen
+            && space.regularIndex > 0
+            && space.id64 != 0
+            && movableFrontWindowSpaceIDs?.contains(space.id64) == false
     }
 
     private func requestSwitchAccessibility() {
