@@ -17,15 +17,15 @@ final class SpaceRowView: NSView {
     private let nameLabel = NSTextField(labelWithString: "")
     private let checkmark = NSImageView()
     private let actionStack = NSStackView()
-    private let moveWindowAction = SpaceRowActionView(symbolName: "arrow.right.square",
-                                                      accessibilityDescription: "Move Frontmost Window Here",
-                                                      tintColor: .systemGreen)
-    private let renameAction = SpaceRowActionView(symbolName: "pencil",
-                                                  accessibilityDescription: "Rename…",
-                                                  tintColor: .controlAccentColor)
-    private let deleteAction = SpaceRowActionView(symbolName: "trash",
-                                                  accessibilityDescription: "Delete Space…",
-                                                  tintColor: .systemRed)
+    private let moveWindowAction = SpaceRowActionButton(symbolName: "arrow.right.square",
+                                                        accessibilityDescription: "Move Frontmost Window Here",
+                                                        tintColor: .systemGreen)
+    private let renameAction = SpaceRowActionButton(symbolName: "pencil",
+                                                    accessibilityDescription: "Rename…",
+                                                    tintColor: .controlAccentColor)
+    private let deleteAction = SpaceRowActionButton(symbolName: "trash",
+                                                    accessibilityDescription: "Delete Space…",
+                                                    tintColor: .systemRed)
 
     private var trackingArea: NSTrackingArea?
     private var isHovered = false
@@ -50,6 +50,12 @@ final class SpaceRowView: NSView {
         super.init(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
         wantsLayer = true
         autoresizingMask = [.width]
+        moveWindowAction.target = self
+        moveWindowAction.action = #selector(moveWindowClicked)
+        renameAction.target = self
+        renameAction.action = #selector(renameClicked)
+        deleteAction.target = self
+        deleteAction.action = #selector(deleteClicked)
 
         if let iconImage {
             iconView.image = iconImage
@@ -117,7 +123,14 @@ final class SpaceRowView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        bounds.contains(point) ? self : nil
+        guard bounds.contains(point) else { return nil }
+        if !actionStack.isHidden {
+            let pointInActions = actionStack.convert(point, from: self)
+            if let hit = actionStack.hitTest(pointInActions) {
+                return hit
+            }
+        }
+        return self
     }
 
     override func updateTrackingAreas() {
@@ -244,8 +257,7 @@ final class SpaceRowView: NSView {
     }
 }
 
-private final class SpaceRowActionView: NSView {
-    private let imageView = NSImageView()
+private final class SpaceRowActionButton: NSButton {
     private let tintColor: NSColor
 
     init(symbolName: String,
@@ -256,21 +268,19 @@ private final class SpaceRowActionView: NSView {
         wantsLayer = true
         toolTip = accessibilityDescription
         translatesAutoresizingMaskIntoConstraints = false
-
-        imageView.image = NSImage(systemSymbolName: symbolName,
-                                  accessibilityDescription: accessibilityDescription)
-        imageView.contentTintColor = tintColor
-        imageView.imageScaling = .scaleProportionallyDown
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(imageView)
+        image = NSImage(systemSymbolName: symbolName,
+                        accessibilityDescription: accessibilityDescription)
+        image?.size = NSSize(width: 13, height: 13)
+        imagePosition = .imageOnly
+        imageScaling = .scaleProportionallyDown
+        isBordered = false
+        bezelStyle = .regularSquare
+        setButtonType(.momentaryChange)
+        contentTintColor = tintColor
 
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: 22),
             heightAnchor.constraint(equalToConstant: 22),
-            imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            imageView.widthAnchor.constraint(equalToConstant: 13),
-            imageView.heightAnchor.constraint(equalToConstant: 13),
         ])
     }
 
@@ -285,5 +295,6 @@ private final class SpaceRowActionView: NSView {
         tintColor.withAlphaComponent(0.36).setStroke()
         path.lineWidth = 0.6
         path.stroke()
+        super.draw(dirtyRect)
     }
 }

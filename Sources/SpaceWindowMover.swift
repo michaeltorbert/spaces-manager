@@ -53,8 +53,15 @@ enum SpaceWindowMover {
             return .unsupportedSpace
         }
 
-        move(windowID: windowID, toSpaceID: space.id64, cid: cid)
-        return waitForMove(of: windowID, to: space.id64, cid: cid) ? .moved : .failed
+        if moveDirect(windowID: windowID, toSpaceID: space.id64, cid: cid) {
+            return .moved
+        }
+        if moveWithWorkspaceCompatibility(windowID: windowID,
+                                          toSpaceID: space.id64,
+                                          cid: cid) {
+            return .moved
+        }
+        return .failed
     }
 
     private static func frontmostMovableWindowID() -> UInt32? {
@@ -116,18 +123,24 @@ enum SpaceWindowMover {
             .filter { $0 != 0 }
     }
 
-    private static func move(windowID: UInt32,
-                             toSpaceID spaceID: CGSSpaceID,
-                             cid: CGSConnectionID) {
-        if usesWorkspaceCompatibilityMove {
-            var mutableWindowID = windowID
-            _ = SLSSpaceSetCompatID(cid, spaceID, compatWorkspaceID)
-            _ = SLSSetWindowListWorkspace(cid, &mutableWindowID, 1, compatWorkspaceID)
-            _ = SLSSpaceSetCompatID(cid, spaceID, 0)
-        } else {
-            let windowIDs = [NSNumber(value: windowID)] as CFArray
-            SLSMoveWindowsToManagedSpace(cid, windowIDs, spaceID)
-        }
+    private static func moveDirect(windowID: UInt32,
+                                   toSpaceID spaceID: CGSSpaceID,
+                                   cid: CGSConnectionID) -> Bool {
+        let windowIDs = [NSNumber(value: windowID)] as CFArray
+        SLSMoveWindowsToManagedSpace(cid, windowIDs, spaceID)
+        return waitForMove(of: windowID, to: spaceID, cid: cid)
+    }
+
+    private static func moveWithWorkspaceCompatibility(windowID: UInt32,
+                                                       toSpaceID spaceID: CGSSpaceID,
+                                                       cid: CGSConnectionID) -> Bool {
+        guard usesWorkspaceCompatibilityMove else { return false }
+
+        var mutableWindowID = windowID
+        _ = SLSSpaceSetCompatID(cid, spaceID, compatWorkspaceID)
+        defer { _ = SLSSpaceSetCompatID(cid, spaceID, 0) }
+        _ = SLSSetWindowListWorkspace(cid, &mutableWindowID, 1, compatWorkspaceID)
+        return waitForMove(of: windowID, to: spaceID, cid: cid)
     }
 
     private static func waitForMove(of windowID: UInt32,
