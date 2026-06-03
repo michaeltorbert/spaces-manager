@@ -129,6 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let windowSummaries = SpaceWindowInspector.summaries(
             forSpaces: snap.spaces.map { $0.id64 }
         )
+        let movableFrontWindowSpaceIDs = SpaceWindowMover.movableFrontmostWindowSpaceIDs()
 
         for (di, display) in displayKeys.enumerated() {
             if showsDisplayHeaders {
@@ -161,6 +162,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let canRename = canRename(space: sp)
                 let canDelete = canDelete(space: sp)
                 let canMoveWindow = canDelete
+                    && !isActive
+                    && movableFrontWindowSpaceIDs?.contains(sp.id64) == false
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
                     name: displayed,
@@ -479,7 +482,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 self?.refresh()
             }
-        case .noFrontmostApp, .noWindow, .unsupportedSpace:
+        case .noWindow, .unsupportedSpace, .failed:
             NSSound.beep()
         }
     }
