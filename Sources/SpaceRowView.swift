@@ -220,8 +220,9 @@ final class SpaceRowView: NSView {
     }
 
     @objc private func moveWindowClicked() {
+        let action = onMoveWindow
         enclosingMenuItem?.menu?.cancelTracking()
-        onMoveWindow()
+        DispatchQueue.main.async { action() }
     }
 
     @objc private func renameClicked() {
