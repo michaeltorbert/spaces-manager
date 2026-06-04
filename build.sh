@@ -47,12 +47,13 @@ swiftc -O \
 cp Info.plist "$APP/Contents/Info.plist"
 cp Assets/AppIcon.icns "$RESOURCES/AppIcon.icns"
 
-# Local dev builds: pin CFBundleVersion well above any release value so
-# Sparkle's auto-update doesn't silently swap this binary out for a
-# released one mid-test. The release workflow sets its own version from
+# Local dev builds use a low CFBundleVersion so Sparkle can switch them back
+# to the latest signed release on an explicit user check. AppDelegate blocks
+# background Sparkle checks for these dev builds, so they are not silently
+# replaced mid-test. The release workflow sets its own version from
 # `git rev-list --count HEAD` and runs with $CI set, so it's unaffected.
 if [ -z "${CI:-}" ]; then
-  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 9999999" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 0" "$APP/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Add :SMDevelopmentBuild bool true" "$APP/Contents/Info.plist" 2>/dev/null \
     || /usr/libexec/PlistBuddy -c "Set :SMDevelopmentBuild true" "$APP/Contents/Info.plist"
 fi

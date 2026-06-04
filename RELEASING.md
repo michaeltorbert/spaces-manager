@@ -63,19 +63,11 @@ Then fix the issue on `main`, re-tag, and push the new tag. The next successful 
 
 ## Local dev builds and Sparkle
 
-The release workflow sets `CFBundleVersion` to `git rev-list --count HEAD` (currently in the double digits). A vanilla `./build.sh` would otherwise leave the placeholder `1` in `Info.plist`, and Sparkle would happily decide the released version is newer than the locally-running build and silently replace the binary on its next scheduled check (default daily). You'd then test what looks like your new code but is actually the released v1.0.0 underneath.
+The release workflow sets `CFBundleVersion` to `git rev-list --count HEAD` (currently in the double digits). Local `./build.sh` builds instead set `CFBundleVersion=0` and `SMDevelopmentBuild=true` after copying `Info.plist` into the bundle. Released builds (run by the workflow with `CI=true`) are unaffected and still use the rev-list value.
 
-`build.sh` works around this: when it detects no `$CI` environment variable, it bumps `CFBundleVersion` to `9999999` after copying `Info.plist` into the bundle. Released builds (run by the workflow with `CI=true`) are unaffected and still use the rev-list value.
+That low dev build number is deliberate: when **Switch to Released Version…** is selected from a dev build, Sparkle sees the latest appcast release as a normal update and handles the download, signature verification, install, and relaunch. SpacesManager blocks Sparkle's background scheduled checks for `SMDevelopmentBuild=true`, so a dev build is not silently replaced while testing.
 
-Local dev builds also mark the bundle with `SMDevelopmentBuild=true`. When **Download Release Anyway…** is selected from a dev build, SpacesManager reads the live appcast and offers the latest signed release zip directly instead of showing Sparkle's misleading "up to date" dialog. This dev-only action ignores the local bundle's display and internal versions because the local internal version is intentionally pinned above release builds.
-
-If you're testing a build that was created before this guard existed, or you want a belt-and-suspenders approach, you can also disable Sparkle's auto-checks for your installed copy:
-
-```sh
-defaults write local.spacesmanager SUEnableAutomaticChecks -bool NO
-```
-
-That writes to the user's preferences and takes effect immediately; restore with `-bool YES` (or `defaults delete local.spacesmanager SUEnableAutomaticChecks`) when you want auto-updates back.
+Do not set `automaticallyChecksForUpdates=false` in code for dev builds. That setting persists in `UserDefaults` under the app's bundle id and would carry over after Sparkle installs the release build.
 
 ## One-time setup (already done)
 
