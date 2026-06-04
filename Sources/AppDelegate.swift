@@ -11,7 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var editorWindow: NSWindow?
     private var editorFields: [(key: String, field: NSTextField)] = []
     private var hasShownSwitchPermissionAlert = false
-    private var releaseCheckInFlight = false
     private weak var maintenanceCheckItem: NSMenuItem?
     private weak var maintenanceQuitItem: NSMenuItem?
     private weak var maintenanceCheckRow: MenuCommandRowView?
@@ -19,9 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var maintenanceOptionLocalMonitor: Any?
     private var maintenanceOptionPollTimer: Timer?
     private var lastMaintenanceOptionDown: Bool?
-    private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true,
-        updaterDelegate: nil,
+    private lazy var updaterController = SPUStandardUpdaterController(
+        startingUpdater: false,
+        updaterDelegate: self,
         userDriverDelegate: nil
     )
     private var hotkeys: GlobalHotkeys?
@@ -36,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
         statusItem.menu = menu
+        updaterController.startUpdater()
         refresh()
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -197,12 +197,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let checkForUpdates = NSMenuItem(title: "Check for Updates…",
+        let checkForUpdates = NSMenuItem(title: updateMenuTitle,
                                          action: #selector(checkForUpdates(_:)),
                                          keyEquivalent: "")
         checkForUpdates.target = self
         let checkForUpdatesRow = MenuCommandRowView(
-            title: "Check for Updates…",
+            title: updateMenuTitle,
             shortcut: "",
             action: { [weak self] in self?.checkForUpdates(nil) }
         )
@@ -274,29 +274,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lastMaintenanceOptionDown = optionDown
 
         if let row = maintenanceCheckRow {
-            if optionDown && isLocalDevelopmentBuild {
-                configureMaintenanceRow(
-                    row: row,
-                    item: maintenanceCheckItem,
-                    title: "Download Release Anyway…",
-                    shortcut: "",
-                    action: { [weak self] in self?.checkReleasedVersion(nil) },
-                    itemTarget: self,
-                    itemAction: #selector(checkReleasedVersion(_:)),
-                    keyEquivalent: ""
-                )
-            } else {
-                configureMaintenanceRow(
-                    row: row,
-                    item: maintenanceCheckItem,
-                    title: "Check for Updates…",
-                    shortcut: "",
-                    action: { [weak self] in self?.checkForUpdates(nil) },
-                    itemTarget: self,
-                    itemAction: #selector(checkForUpdates(_:)),
-                    keyEquivalent: ""
-                )
-            }
+            configureMaintenanceRow(
+                row: row,
+                item: maintenanceCheckItem,
+                title: updateMenuTitle,
+                shortcut: "",
+                action: { [weak self] in self?.checkForUpdates(nil) },
+                itemTarget: self,
+                itemAction: #selector(checkForUpdates(_:)),
+                keyEquivalent: ""
+            )
         }
 
         if let row = maintenanceQuitRow {
@@ -346,10 +333,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updaterController.checkForUpdates(sender)
     }
 
-    @objc private func checkReleasedVersion(_ sender: Any?) {
-        checkReleasedVersionForDevelopmentBuild(sender: sender)
-    }
-
     private var isLocalDevelopmentBuild: Bool {
         guard let info = Bundle.main.infoDictionary else { return false }
         if let value = info["SMDevelopmentBuild"] as? Bool {
@@ -358,74 +341,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let value = info["SMDevelopmentBuild"] as? NSNumber {
             return value.boolValue
         }
-        return (info["CFBundleVersion"] as? String) == "9999999"
+        let bundleVersion = info["CFBundleVersion"] as? String
+        return bundleVersion == "0" || bundleVersion == "9999999"
     }
 
-    private var appcastFeedURL: URL? {
-        guard let value = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String else {
-            return nil
-        }
-        return URL(string: value)
-    }
-
-    private var releasesPageURL: URL {
-        URL(string: "https://github.com/michaeltorbert/spaces-manager/releases")!
-    }
-
-    private func checkReleasedVersionForDevelopmentBuild(sender: Any?) {
-        guard !releaseCheckInFlight else { return }
-        guard let feedURL = appcastFeedURL else {
-            showReleaseCheckFailed(sender: sender)
-            return
-        }
-
-        releaseCheckInFlight = true
-        ReleasedVersionChecker.fetchLatest(feedURL: feedURL) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.releaseCheckInFlight = false
-
-                switch result {
-                case .success(let release):
-                    self.showSwitchToReleasePrompt(release)
-                default:
-                    self.showReleaseCheckFailed(sender: sender)
-                }
-            }
-        }
-    }
-
-    private func showSwitchToReleasePrompt(_ release: ReleasedVersion) {
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = "Switch to Released Version?"
-        alert.informativeText = "This development build cannot update automatically because its internal build number is higher than released builds. Download the latest signed release and replace the app manually."
-        alert.addButton(withTitle: "Download \(release.displayVersion)")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-
-        NSWorkspace.shared.open(release.downloadURL ?? release.infoURL ?? releasesPageURL)
-    }
-
-    private func showReleaseCheckFailed(sender: Any?) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Could Not Check Releases"
-        alert.informativeText = "SpacesManager could not read the release feed. Try again, or open the releases page manually."
-        alert.addButton(withTitle: "Try Again")
-        alert.addButton(withTitle: "Open Releases")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate(ignoringOtherApps: true)
-
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
-            checkReleasedVersionForDevelopmentBuild(sender: sender)
-        case .alertSecondButtonReturn:
-            NSWorkspace.shared.open(releasesPageURL)
-        default:
-            break
-        }
+    private var updateMenuTitle: String {
+        isLocalDevelopmentBuild ? "Switch to Released Version…" : "Check for Updates…"
     }
 
     @objc private func relaunchSpacesManager() {
@@ -679,6 +600,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         editorWindow?.close()
         editorWindow = nil
         editorFields = []
+    }
+}
+
+extension AppDelegate: SPUUpdaterDelegate {
+    func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
+        guard isLocalDevelopmentBuild && updateCheck == .updatesInBackground else { return }
+        throw NSError(
+            domain: "local.spacesmanager",
+            code: 1,
+            userInfo: [
+                NSLocalizedDescriptionKey:
+                    "Development builds do not check for updates in the background."
+            ]
+        )
     }
 }
 

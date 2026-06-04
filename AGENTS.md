@@ -53,10 +53,10 @@ When Codex reviews a pull request:
 
 ```sh
 ./build.sh                    # produces build/SpacesManager.app
-open build/SpacesManager.app  # click the menu icon, confirm "Check for Updates…" appears
+open build/SpacesManager.app  # click the menu icon, confirm "Switch to Released Version…" appears
 ```
 
-First build downloads Sparkle into `Frameworks/`. No test suite exists — verification is: `codesign --verify --deep --strict` passes (build.sh runs this), app launches, menu shows, "Check for Updates…" pops Sparkle UI.
+First build downloads Sparkle into `Frameworks/`. No test suite exists — verification is: `codesign --verify --deep --strict` passes (build.sh runs this), app launches, menu shows, "Switch to Released Version…" pops Sparkle UI from a dev build. Release builds show "Check for Updates…".
 
 ## Hard rules — do not violate
 
