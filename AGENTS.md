@@ -30,17 +30,42 @@ those may appear as the personal account.
 
 Unless the user explicitly asks for a different flow:
 
-1. Claude writes the implementation code.
-2. Claude opens the pull request using the Claude GitHub App identity.
-3. Codex reviews the pull request using the Codex GitHub App identity.
+1. Codex leads the workflow: verify the target issue/PR/repo, scope the change,
+   write the implementation code, run the relevant build or smoke checks, and
+   open or update the pull request using the Codex GitHub App identity.
+2. Codex directs Claude as the independent second agent: ask Claude for bounded
+   issue planning, implementation sanity checks, or formal PR review as
+   appropriate for the stage of work.
+3. Claude uses the Claude GitHub App identity for any Claude-attributed GitHub
+   write, including issue comments, PR comments, or formal reviews.
+4. Codex addresses actionable Claude feedback, reruns the relevant checks, and
+   sends the updated work back to Claude until current-run evidence from both
+   agents says there are no material unresolved issues, or until a concrete
+   blocker is reported.
 
-Keep implementation and review roles separate. Codex should not push fixes to a
-Claude-authored PR unless the user explicitly asks Codex to take over the
-implementation work.
+Keep implementation and review roles separate. The reviewing agent should not
+push fixes to the implementing agent's PR unless the user explicitly asks for
+that role change.
+
+If there is a concrete reason for Claude to implement and Codex to review
+instead, Codex should say why, use the AI consensus/review skills to coordinate
+that inversion, and still preserve the GitHub identity rules above.
+
+Do not create competing Codex-authored and Claude-authored PRs by default. Use
+parallel PRs only when there are genuinely different high-risk approaches worth
+comparing in code; otherwise they add review noise and token cost without much
+benefit.
 
 When an agent creates a pull request, rename that agent's active conversation
 or thread after the PR number is known. Include the PR number and issue number
 when available, for example `PR #36 for issue #29`.
+
+When Claude reviews a pull request:
+- Submit the formal GitHub PR review using `claude-bot-mt[bot]`.
+- Also leave a short top-level PR conversation comment summarizing the review
+  result for human visibility.
+- Link the top-level comment to the formal review and any key inline
+  discussion.
 
 When Codex reviews a pull request:
 - Submit the formal GitHub PR review using `codex-bot-mt[bot]`.

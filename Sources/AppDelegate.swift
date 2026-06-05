@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let store = NameStore()
     private let hud = HUDWindow()
+    private let thumbnailCache = ThumbnailCache()
     private var lastActiveKey: String?
     private var editorWindow: NSWindow?
     private var editorFields: [(key: String, field: NSTextField)] = []
@@ -35,8 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
         statusItem.menu = menu
+        thumbnailCache.loadFromDisk()
         updaterController.startUpdater()
         refresh()
+        captureActiveThumbnail()
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(activeSpaceChanged),
@@ -74,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func refresh() {
         let snap = SpacesProvider.snapshot()
+        pruneThumbnails(in: snap)
         lastActiveKey = snap.activeKey
         updateStatusTitle(snap: snap)
     }
@@ -87,6 +91,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let activeKey = snap.activeKey, activeKey != lastActiveKey,
               let sp = snap.spaces.first(where: { $0.key == activeKey })
         else { return }
+        pruneThumbnails(in: snap)
+        thumbnailCache.capture(spaceKey: activeKey, displayID: sp.displayID)
         hud.show(text: store.displayName(for: sp))
     }
 
@@ -121,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
         lastMaintenanceOptionDown = nil
         let snap = SpacesProvider.snapshot()
+        pruneThumbnails(in: snap)
         lastActiveKey = snap.activeKey
         let grouped = Dictionary(grouping: snap.spaces, by: { $0.displayID })
         let displayKeys = grouped.keys.sorted()
@@ -167,6 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
                     name: displayed,
+                    thumbnail: thumbnailCache.thumbnail(for: sp.key),
                     iconImage: dominantApp?.icon,
                     isActive: isActive,
                     canSwitch: canSwitch,
@@ -226,6 +234,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         maintenanceQuitRow = quitRow
 
         updateMaintenanceItems(optionDown: isOptionKeyDown, force: true)
+    }
+
+    private func captureActiveThumbnail(snap: Snapshot? = nil) {
+        let s = snap ?? SpacesProvider.snapshot()
+        guard let activeKey = s.activeKey,
+              let sp = s.spaces.first(where: { $0.key == activeKey })
+        else { return }
+        thumbnailCache.capture(spaceKey: activeKey, displayID: sp.displayID)
+    }
+
+    private func pruneThumbnails(in snap: Snapshot) {
+        thumbnailCache.prune(validKeys: Set(snap.spaces.map { $0.key }))
     }
 
     private func startMaintenanceOptionTracking() {
