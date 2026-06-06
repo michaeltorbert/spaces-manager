@@ -39,8 +39,8 @@ permission; without it, the menu still works and falls back to app/display icons
 Choose **Enable Space Thumbnails…** from the menu to request access. After
 granting Screen Recording in System Settings, quit and reopen SpacesManager so
 macOS applies the permission before testing thumbnails again. If you launch a
-development build from Terminal, macOS may list Terminal as the app requesting
-Screen Recording.
+development build from Terminal, turn on Terminal in the Screen Recording list;
+an installed build may appear as SpacesManager instead.
 
 Because SpacesManager is a menu-bar agent (`LSUIElement=true`), its app icon appears in Finder, Get Info, Spotlight, and release artifacts, not in the Dock or app switcher.
 

@@ -276,7 +276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = "Enable space thumbnails"
-        alert.informativeText = "Space thumbnails need macOS Screen Recording permission. If you grant it in System Settings, quit and reopen SpacesManager before testing thumbnails again. Development builds launched from Terminal may appear as Terminal in the permission list."
+        alert.informativeText = "Space thumbnails need macOS Screen Recording permission. For this Terminal-launched development build, turn on Terminal in System Settings. For an installed app, turn on SpacesManager if it appears. After granting access, quit and reopen SpacesManager before testing thumbnails again."
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
