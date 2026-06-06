@@ -6,22 +6,21 @@ For AI coding agents (Codex, Claude Code, Cursor, etc.) working on SpacesManager
 
 macOS menu-bar utility for naming Mission Control spaces. Swift, AppKit, ad-hoc signed, ships outside the App Store. User-facing description in [README.md](README.md); release runbook in [RELEASING.md](RELEASING.md).
 
+Before making code, build, signing, or release changes, read the "Hard rules"
+section below.
+
 ## GitHub identity
 
 Before any GitHub write, verify the target repo is
 `michaeltorbert/spaces-manager`.
 
 Use the appropriate GitHub App identity rather than the personal
-`michaeltorbert` account.
+`michaeltorbert` account:
 
-Codex identity:
-- Visible actor: `codex-bot-mt[bot]`
-- Use the local GitHub App token path, such as `github-app-curl`, for writes.
-
-Claude identity:
-- GitHub App profile: `claude`
-- Visible actor: `claude-bot-mt[bot]`
-- Use `github-app-curl --profile claude` for Claude-attributed writes.
+| Agent | Visible actor | Write path |
+| --- | --- | --- |
+| Codex | `codex-bot-mt[bot]` | `github-app-curl` |
+| Claude | `claude-bot-mt[bot]` | `github-app-curl --profile claude` |
 
 Do not use connector-backed GitHub writes when bot attribution matters, because
 those may appear as the personal account.
@@ -30,24 +29,51 @@ those may appear as the personal account.
 
 Unless the user explicitly asks for a different flow:
 
-1. Claude writes the implementation code.
-2. Claude opens the pull request using the Claude GitHub App identity.
-3. Codex reviews the pull request using the Codex GitHub App identity.
+1. Codex leads: verify the target issue/PR/repo, scope the change, write the
+   implementation, run the relevant build or smoke checks, and open or update
+   the pull request using the Codex GitHub App identity. For code changes,
+   `./build.sh` is the standard verification and includes strict codesign
+   verification.
+2. Codex asks Claude for a bounded independent pass when useful: issue
+   planning, implementation sanity check, or formal PR review. For issue
+   planning and local sanity checks, keep Claude's feedback in the conversation
+   unless Codex explicitly asks Claude to draft or post a GitHub comment.
+3. Claude uses the Claude GitHub App identity for any Claude-attributed GitHub
+   write, including issue comments, PR comments, and formal reviews.
+4. Codex addresses actionable Claude feedback, reruns the relevant checks, and
+   sends the updated work back to Claude until the latest current-run evidence
+   from both agents says there are no material unresolved issues, or until a
+   concrete blocker is reported.
+5. Escalate instead of spinning: if Codex and Claude still disagree after two
+   substantive review rounds, or if a change touches a Hard Rule and either
+   agent is uncertain, summarize the disagreement or risk for the user.
 
-Keep implementation and review roles separate. Codex should not push fixes to a
-Claude-authored PR unless the user explicitly asks Codex to take over the
-implementation work.
+### Role boundaries
 
-When an agent creates a pull request, rename that agent's active conversation
-or thread after the PR number is known. Include the PR number and issue number
-when available, for example `PR #36 for issue #29`.
+- Keep implementation and review roles separate. The reviewing agent should not
+  push fixes to the implementing agent's PR unless the user explicitly asks for
+  that role change.
+- If there is a concrete reason for Claude to implement and Codex to review
+  instead, Codex should say why, use the AI consensus/review skills to
+  coordinate that inversion, and still preserve the GitHub identity rules above.
+- Do not create competing Codex-authored and Claude-authored PRs by default.
+  Parallel PRs are only worth it when genuinely different high-risk approaches
+  need to be compared in code.
 
-When Codex reviews a pull request:
-- Submit the formal GitHub PR review using `codex-bot-mt[bot]`.
+### PR review comments
+
+When either agent reviews a pull request:
+
+- Submit the formal GitHub PR review using that agent's bot identity.
 - Also leave a short top-level PR conversation comment summarizing the review
   result for human visibility.
 - Link the top-level comment to the formal review and any key inline
   discussion.
+
+When a PR exists, include the PR number and issue number in subsequent status
+messages when available, for example `PR #36 for issue #29`. If the agent tool
+supports renaming the active conversation or thread, include the PR number
+there too.
 
 ## Build & smoke test
 
@@ -60,6 +86,8 @@ First build downloads Sparkle into `Frameworks/`. No test suite exists — verif
 
 ## Hard rules — do not violate
 
+- **`CLAUDE.md` is a symlink to `AGENTS.md`.** Edit `AGENTS.md`; do not replace
+  the symlink or create a divergent Claude-only copy.
 - **Ad-hoc signing only.** Never add `--options runtime` to any `codesign` call. Hardened runtime + library validation prevents an ad-hoc-signed host from loading `Sparkle.framework`.
 - **Sparkle signing order is deepest-first**: `XPCServices/*.xpc` → `Updater.app` → `Autoupdate` → `Sparkle.framework` → outer app. Reordering breaks `codesign --verify --deep --strict`.
 - **`Package.swift` is for IDE indexing only.** Do not migrate the build to `swift build`; the real build is `build.sh` with the vendored framework under `Frameworks/`. Sparkle is declared in both places — keep versions in lockstep when bumping.
