@@ -6,73 +6,112 @@ For AI coding agents (Codex, Claude Code, Cursor, etc.) working on SpacesManager
 
 macOS menu-bar utility for naming Mission Control spaces. Swift, AppKit, ad-hoc signed, ships outside the App Store. User-facing description in [README.md](README.md); release runbook in [RELEASING.md](RELEASING.md).
 
+Before making code, build, signing, or release changes, read the "Hard rules"
+section below.
+
 ## GitHub identity
 
 Before any GitHub write, verify the target repo is
 `michaeltorbert/spaces-manager`.
 
 Use the appropriate GitHub App identity rather than the personal
-`michaeltorbert` account.
+`michaeltorbert` account:
 
-Codex identity:
-- Visible actor: `codex-bot-mt[bot]`
-- Use the local GitHub App token path, such as `github-app-curl`, for writes.
-
-Claude identity:
-- GitHub App profile: `claude`
-- Visible actor: `claude-bot-mt[bot]`
-- Use `github-app-curl --profile claude` for Claude-attributed writes.
+| Agent | Visible actor | Write path |
+| --- | --- | --- |
+| Codex | `codex-bot-mt[bot]` | `github-app-curl` |
+| Claude | `claude-bot-mt[bot]` | `github-app-curl --profile claude` |
 
 Do not use connector-backed GitHub writes when bot attribution matters, because
 those may appear as the personal account.
+
+## Git freshness and push safety
+
+Stale worktrees are a known hazard in this repo. Treat `origin/main`, not any
+local `main`, as the source of truth.
+
+Before making code, build, signing, release, branch, PR, or issue changes:
+
+1. Verify the remote is `michaeltorbert/spaces-manager`:
+   `git remote get-url origin`.
+2. Check the live source of truth:
+   `git ls-remote --heads origin main`.
+3. Do not work directly on `main` or on a detached `HEAD`. Start from the
+   refreshed remote tip, for example:
+   `git switch -c codex/<topic> origin/main`.
+4. Run `scripts/git-safety-check.sh` before committing, pushing, opening a PR,
+   or creating a release tag.
+
+Hard stop conditions:
+
+- If the current branch is `main`, stop. Create a feature branch from
+  `origin/main` and move the changes there.
+- If the current branch does not contain current live `origin/main`, stop.
+  Rebase or merge the live main tip before any commit, push, or PR.
+- Never use `git push --force`, `git push --force-with-lease`, or
+  `git push --no-verify` in this repo.
+- Never push directly to `main`; `main` advances only by GitHub PR merge or the
+  documented release workflow.
+- If GitHub reports `main` is unprotected, do not perform a ref-changing GitHub
+  write until branch protection is fixed or the user explicitly accepts the
+  risk. Required protection: PRs required for `main`, admins enforced, force
+  pushes disabled, branch deletion disabled.
+
+Install the local guard hooks in every clone/worktree before agent work:
+
+```sh
+scripts/install-git-guards.sh
+```
 
 ## Default agent workflow
 
 Unless the user explicitly asks for a different flow:
 
-1. Codex leads the workflow: verify the target issue/PR/repo, scope the change,
-   write the implementation code, run the relevant build or smoke checks, and
-   open or update the pull request using the Codex GitHub App identity.
-2. Codex directs Claude as the independent second agent: ask Claude for bounded
-   issue planning, implementation sanity checks, or formal PR review as
-   appropriate for the stage of work.
+1. Codex leads: verify the target issue/PR/repo, scope the change, write the
+   implementation, run the relevant build or smoke checks, and open or update
+   the pull request using the Codex GitHub App identity. For code changes,
+   `./build.sh` is the standard verification and includes strict codesign
+   verification.
+2. Codex asks Claude for a bounded independent pass when useful: issue
+   planning, implementation sanity check, or formal PR review. For issue
+   planning and local sanity checks, keep Claude's feedback in the conversation
+   unless Codex explicitly asks Claude to draft or post a GitHub comment.
 3. Claude uses the Claude GitHub App identity for any Claude-attributed GitHub
-   write, including issue comments, PR comments, or formal reviews.
+   write, including issue comments, PR comments, and formal reviews.
 4. Codex addresses actionable Claude feedback, reruns the relevant checks, and
-   sends the updated work back to Claude until current-run evidence from both
-   agents says there are no material unresolved issues, or until a concrete
-   blocker is reported.
+   sends the updated work back to Claude until the latest current-run evidence
+   from both agents says there are no material unresolved issues, or until a
+   concrete blocker is reported.
+5. Escalate instead of spinning: if Codex and Claude still disagree after two
+   substantive review rounds, or if a change touches a Hard Rule and either
+   agent is uncertain, summarize the disagreement or risk for the user.
 
-Keep implementation and review roles separate. The reviewing agent should not
-push fixes to the implementing agent's PR unless the user explicitly asks for
-that role change.
+### Role boundaries
 
-If there is a concrete reason for Claude to implement and Codex to review
-instead, Codex should say why, use the AI consensus/review skills to coordinate
-that inversion, and still preserve the GitHub identity rules above.
+- Keep implementation and review roles separate. The reviewing agent should not
+  push fixes to the implementing agent's PR unless the user explicitly asks for
+  that role change.
+- If there is a concrete reason for Claude to implement and Codex to review
+  instead, Codex should say why, use the AI consensus/review skills to
+  coordinate that inversion, and still preserve the GitHub identity rules above.
+- Do not create competing Codex-authored and Claude-authored PRs by default.
+  Parallel PRs are only worth it when genuinely different high-risk approaches
+  need to be compared in code.
 
-Do not create competing Codex-authored and Claude-authored PRs by default. Use
-parallel PRs only when there are genuinely different high-risk approaches worth
-comparing in code; otherwise they add review noise and token cost without much
-benefit.
+### PR review comments
 
-When an agent creates a pull request, rename that agent's active conversation
-or thread after the PR number is known. Include the PR number and issue number
-when available, for example `PR #36 for issue #29`.
+When either agent reviews a pull request:
 
-When Claude reviews a pull request:
-- Submit the formal GitHub PR review using `claude-bot-mt[bot]`.
+- Submit the formal GitHub PR review using that agent's bot identity.
 - Also leave a short top-level PR conversation comment summarizing the review
   result for human visibility.
 - Link the top-level comment to the formal review and any key inline
   discussion.
 
-When Codex reviews a pull request:
-- Submit the formal GitHub PR review using `codex-bot-mt[bot]`.
-- Also leave a short top-level PR conversation comment summarizing the review
-  result for human visibility.
-- Link the top-level comment to the formal review and any key inline
-  discussion.
+When a PR exists, include the PR number and issue number in subsequent status
+messages when available, for example `PR #36 for issue #29`. If the agent tool
+supports renaming the active conversation or thread, include the PR number
+there too.
 
 ## Build & smoke test
 
@@ -85,6 +124,8 @@ First build downloads Sparkle into `Frameworks/`. No test suite exists — verif
 
 ## Hard rules — do not violate
 
+- **`CLAUDE.md` is a symlink to `AGENTS.md`.** Edit `AGENTS.md`; do not replace
+  the symlink or create a divergent Claude-only copy.
 - **Ad-hoc signing only.** Never add `--options runtime` to any `codesign` call. Hardened runtime + library validation prevents an ad-hoc-signed host from loading `Sparkle.framework`.
 - **Sparkle signing order is deepest-first**: `XPCServices/*.xpc` → `Updater.app` → `Autoupdate` → `Sparkle.framework` → outer app. Reordering breaks `codesign --verify --deep --strict`.
 - **`Package.swift` is for IDE indexing only.** Do not migrate the build to `swift build`; the real build is `build.sh` with the vendored framework under `Frameworks/`. Sparkle is declared in both places — keep versions in lockstep when bumping.

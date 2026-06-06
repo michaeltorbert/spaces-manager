@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+
+remote="origin"
+target_repo="michaeltorbert/spaces-manager"
+
+die() {
+  printf '%s\n' "$*" >&2
+  exit 1
+}
+
+remote_url="$(git remote get-url "$remote" 2>/dev/null || true)"
+case "$remote_url" in
+  https://github.com/michaeltorbert/spaces-manager.git|\
+  git@github.com:michaeltorbert/spaces-manager.git|\
+  ssh://git@github.com:michaeltorbert/spaces-manager.git)
+    ;;
+  *)
+    die "pre-commit: origin is '$remote_url', not $target_repo."
+    ;;
+esac
+
+branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+[ -n "$branch" ] || die "pre-commit: detached HEAD is not allowed. Create a feature branch from origin/main."
+[ "$branch" != "main" ] || die "pre-commit: commits on local main are not allowed. Create a feature branch from origin/main."
+
+remote_main="refs/remotes/$remote/main"
+git rev-parse --verify --quiet "$remote_main" >/dev/null ||
+  die "pre-commit: origin/main is unavailable. Run: git fetch --prune origin main"
+
+if ! git merge-base --is-ancestor "$remote_main" HEAD; then
+  behind="$(git rev-list --count "HEAD..$remote_main" 2>/dev/null || printf 'unknown')"
+  die "pre-commit: $branch does not contain current origin/main ($behind commits behind). Rebase or merge origin/main first."
+fi
