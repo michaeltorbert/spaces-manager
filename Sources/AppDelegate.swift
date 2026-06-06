@@ -506,7 +506,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = "Allow SpacesManager to switch spaces"
-        alert.informativeText = "Click-to-switch uses macOS Accessibility permission to send the same Dock swipe event as a trackpad space switch. This switching path does not need Screen Recording or SIP changes."
+        alert.informativeText = "Click-to-switch uses macOS Accessibility permission to send the same Dock swipe event as a trackpad space switch. For this Terminal-launched development build, turn on Terminal in Accessibility. For an installed app, turn on SpacesManager if it appears. This switching path does not need Screen Recording or SIP changes."
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)

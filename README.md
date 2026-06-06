@@ -34,13 +34,17 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 - Xcode Command Line Tools (`xcode-select --install`) for `swiftc` and `codesign`
 
 No Apple Developer account, no entitlements, no SIP changes. Click-to-switch
-requires Accessibility permission. Space thumbnails require Screen Recording
-permission; without it, the menu still works and falls back to app/display icons.
-Choose **Enable Space Thumbnails…** from the menu to request access. After
-granting Screen Recording in System Settings, quit and reopen SpacesManager so
-macOS applies the permission before testing thumbnails again. If you launch a
-development build from Terminal, turn on Terminal in the Screen Recording list;
-an installed build may appear as SpacesManager instead.
+requires Accessibility permission. If you launch a development build from
+Terminal, turn on Terminal in Accessibility; an installed build may appear as
+SpacesManager instead.
+
+Space thumbnails require Screen Recording permission; without it, the menu still
+works and falls back to app/display icons. Choose **Enable Space Thumbnails…**
+from the menu to request access. After granting Screen Recording in System
+Settings, quit and reopen SpacesManager so macOS applies the permission before
+testing thumbnails again. If you launch a development build from Terminal, turn
+on Terminal in the Screen Recording list; an installed build may appear as
+SpacesManager instead.
 
 Because SpacesManager is a menu-bar agent (`LSUIElement=true`), its app icon appears in Finder, Get Info, Spotlight, and release artifacts, not in the Dock or app switcher.
 
