@@ -116,11 +116,16 @@ there too.
 ## Build & smoke test
 
 ```sh
+./scripts/preflight.sh        # checks repo guardrails before build/release
 ./build.sh                    # produces build/SpacesManager.app
 open build/SpacesManager.app  # click the menu icon, confirm "Switch to Released Version…" appears
 ```
 
 First build downloads Sparkle into `Frameworks/`. No test suite exists — verification is: `codesign --verify --deep --strict` passes (build.sh runs this), app launches, menu shows, "Switch to Released Version…" pops Sparkle UI from a dev build. Release builds show "Check for Updates…".
+
+When an agent needs to verify the menu-bar UI, use the Codex Computer Use
+plugin to launch `build/SpacesManager.app`, click the status item, and inspect
+the native menu. Browser tooling is not applicable to this app.
 
 ## Hard rules — do not violate
 
@@ -138,7 +143,9 @@ First build downloads Sparkle into `Frameworks/`. No test suite exists — verif
 - `Assets/` — app icon source, generator script, and compiled `.icns`.
 - `Info.plist` — bundle metadata + Sparkle keys (`SUFeedURL`, `SUPublicEDKey`, `SUEnableAutomaticChecks`, `SUScheduledCheckInterval`).
 - `build.sh` — vendors Sparkle, runs `swiftc`, signs the nested chain.
+- `scripts/preflight.sh` — fast guardrails for Sparkle/version/signing rules.
 - `Package.swift` — IDE indexing only.
+- `.github/workflows/ci.yml` — pull-request build and preflight guardrails.
 - `.github/workflows/release.yml` — tag-triggered release pipeline.
 - `Frameworks/`, `build/`, `.build/`, `Package.resolved` — gitignored.
 
