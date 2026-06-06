@@ -1,0 +1,57 @@
+name: Stale Main Guard
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Require pull request branch to contain live main
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            behind=$(git rev-list --count HEAD..origin/main)
+            echo "::error::PR head does not contain current origin/main; it is ${behind} commits behind. Rebase or merge origin/main before review or merge."
+            exit 1
+          fi
+
+      - name: Detect non-fast-forward main updates
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          before="${{ github.event.before }}"
+          after="${{ github.sha }}"
+          zero="0000000000000000000000000000000000000000"
+
+          if [[ "$before" == "$zero" ]]; then
+            echo "::error::Unexpected main branch creation event."
+            exit 1
+          fi
+
+          if ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "$before" || {
+              echo "::error::Could not fetch previous main SHA ${before}; refusing to treat this main update as verified."
+              exit 1
+            }
+          fi
+
+          if ! git merge-base --is-ancestor "$before" "$after"; then
+            echo "::error::main moved non-fast-forward from ${before} to ${after}. Investigate possible force push or rewrite immediately."
+            exit 1
+          fi

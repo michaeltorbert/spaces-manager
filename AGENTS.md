@@ -25,6 +25,44 @@ Use the appropriate GitHub App identity rather than the personal
 Do not use connector-backed GitHub writes when bot attribution matters, because
 those may appear as the personal account.
 
+## Git freshness and push safety
+
+Stale worktrees are a known hazard in this repo. Treat `origin/main`, not any
+local `main`, as the source of truth.
+
+Before making code, build, signing, release, branch, PR, or issue changes:
+
+1. Verify the remote is `michaeltorbert/spaces-manager`:
+   `git remote get-url origin`.
+2. Check the live source of truth:
+   `git ls-remote --heads origin main`.
+3. Do not work directly on `main` or on a detached `HEAD`. Start from the
+   refreshed remote tip, for example:
+   `git switch -c codex/<topic> origin/main`.
+4. Run `scripts/git-safety-check.sh` before committing, pushing, opening a PR,
+   or creating a release tag.
+
+Hard stop conditions:
+
+- If the current branch is `main`, stop. Create a feature branch from
+  `origin/main` and move the changes there.
+- If the current branch does not contain current live `origin/main`, stop.
+  Rebase or merge the live main tip before any commit, push, or PR.
+- Never use `git push --force`, `git push --force-with-lease`, or
+  `git push --no-verify` in this repo.
+- Never push directly to `main`; `main` advances only by GitHub PR merge or the
+  documented release workflow.
+- If GitHub reports `main` is unprotected, do not perform a ref-changing GitHub
+  write until branch protection is fixed or the user explicitly accepts the
+  risk. Required protection: PRs required for `main`, admins enforced, force
+  pushes disabled, branch deletion disabled.
+
+Install the local guard hooks in every clone/worktree before agent work:
+
+```sh
+scripts/install-git-guards.sh
+```
+
 ## Default agent workflow
 
 Unless the user explicitly asks for a different flow:
