@@ -129,7 +129,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let windowSummaries = SpaceWindowInspector.summaries(
             forSpaces: snap.spaces.map { $0.id64 }
         )
-        let movableFrontWindowSpaceIDs = SpaceWindowMover.movableFrontmostWindowSpaceIDs()
 
         for (di, display) in displayKeys.enumerated() {
             if showsDisplayHeaders {
@@ -161,9 +160,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let canSwitch = !sp.displayID.isEmpty && sp.id64 != 0
                 let canRename = canRename(space: sp)
                 let canDelete = canDelete(space: sp)
-                let canMoveWindow = canMoveWindow(to: sp,
-                                                  isActive: isActive,
-                                                  movableFrontWindowSpaceIDs: movableFrontWindowSpaceIDs)
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
                     name: displayed,
@@ -172,9 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     canSwitch: canSwitch,
                     canRename: canRename,
                     canDelete: canDelete,
-                    canMoveWindow: canMoveWindow,
                     onSwitch: { [weak self] in self?.switchTo(space: sp) },
-                    onMoveWindow: { [weak self] in self?.moveFrontmostWindow(to: sp) },
                     onRename: { [weak self] in self?.promptRename(key: sp.key) },
                     onDelete: { [weak self] in self?.confirmDelete(space: sp, name: baseName) }
                 )
@@ -397,33 +391,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func moveFrontmostWindow(to space: Space) {
-        switch SpaceWindowMover.moveFrontmostWindow(to: space) {
-        case .moved, .alreadyThere:
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                self?.refresh()
-            }
-        case .noWindow, .unsupportedSpace, .failed:
-            NSSound.beep()
-        }
-    }
-
     private func canRename(space: Space) -> Bool {
         !space.isFullscreen && space.regularIndex > 0 && !space.key.isEmpty
     }
 
     private func canDelete(space: Space) -> Bool {
         canRename(space: space) && space.id64 != 0
-    }
-
-    private func canMoveWindow(to space: Space,
-                               isActive: Bool,
-                               movableFrontWindowSpaceIDs: Set<CGSSpaceID>?) -> Bool {
-        !isActive
-            && !space.isFullscreen
-            && space.regularIndex > 0
-            && space.id64 != 0
-            && movableFrontWindowSpaceIDs?.contains(space.id64) == false
     }
 
     private func requestSwitchAccessibility() {
