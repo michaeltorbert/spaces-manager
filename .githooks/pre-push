@@ -1,0 +1,66 @@
+#!/bin/sh
+set -eu
+
+remote="${1:-origin}"
+remote_url="${2:-}"
+zero="0000000000000000000000000000000000000000"
+target_repo="michaeltorbert/spaces-manager"
+
+die() {
+  printf '%s\n' "$*" >&2
+  exit 1
+}
+
+case "$remote_url" in
+  https://github.com/michaeltorbert/spaces-manager.git|\
+  git@github.com:michaeltorbert/spaces-manager.git|\
+  ssh://git@github.com/michaeltorbert/spaces-manager.git)
+    ;;
+  *)
+    die "pre-push: $remote remote is '$remote_url', not $target_repo."
+    ;;
+esac
+
+remote_main_sha="$(git ls-remote --exit-code "$remote" refs/heads/main | awk '{print $1}')"
+[ -n "$remote_main_sha" ] ||
+  die "pre-push: could not read live $remote/main. Push rejected."
+
+if ! git cat-file -e "$remote_main_sha^{commit}" 2>/dev/null; then
+  git fetch --quiet --no-write-fetch-head "$remote" refs/heads/main ||
+    die "pre-push: live $remote/main is not present locally and could not be fetched. Push rejected."
+fi
+
+while read -r local_ref local_sha remote_ref remote_sha
+do
+  [ -n "${local_ref:-}" ] || continue
+
+  if [ "$local_sha" = "$zero" ]; then
+    die "pre-push: deleting remote refs is not allowed in this repo."
+  fi
+
+  case "$remote_ref" in
+    refs/heads/main)
+      die "pre-push: direct pushes to main are forbidden. Use a PR from a feature branch."
+      ;;
+    refs/heads/*)
+      git cat-file -e "$local_sha^{commit}" 2>/dev/null ||
+        die "pre-push: $local_sha is not a commit."
+
+      if [ "$remote_sha" != "$zero" ] &&
+        ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+        die "pre-push: non-fast-forward update to $remote_ref is forbidden."
+      fi
+
+      if ! git merge-base --is-ancestor "$remote_main_sha" "$local_sha"; then
+        behind="$(git rev-list --count "$local_sha..$remote_main_sha" 2>/dev/null || printf 'unknown')"
+        die "pre-push: pushed tip for $remote_ref does not contain current $remote/main ($behind commits behind). Rebase or merge $remote/main first."
+      fi
+      ;;
+    refs/tags/v*)
+      tag_target="$(git rev-list -n 1 "$local_sha" 2>/dev/null || true)"
+      [ -n "$tag_target" ] || die "pre-push: could not resolve release tag target $local_ref."
+      [ "$tag_target" = "$remote_main_sha" ] ||
+        die "pre-push: release tag $remote_ref must point at current $remote/main ($remote_main_sha)."
+      ;;
+  esac
+done
