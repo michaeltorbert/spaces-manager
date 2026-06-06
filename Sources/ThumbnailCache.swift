@@ -33,6 +33,15 @@ final class ThumbnailCache {
             .appendingPathComponent(Self.thumbnailDirectoryName, isDirectory: true)
     }
 
+    var hasScreenCaptureAccess: Bool {
+        Self.hasScreenCaptureAccess
+    }
+
+    @discardableResult
+    func requestScreenCaptureAccess() -> Bool {
+        Self.requestScreenCaptureAccess()
+    }
+
     func loadFromDisk() {
         let directoryURL = self.directoryURL
         ioQueue.async { [weak self] in
@@ -55,6 +64,7 @@ final class ThumbnailCache {
     func capture(spaceKey: String, displayID: String) {
         guard !spaceKey.isEmpty,
               !inFlightKeys.contains(spaceKey),
+              Self.hasScreenCaptureAccess,
               let captureRect = Self.captureRect(for: displayID)
         else { return }
 
@@ -244,5 +254,14 @@ final class ThumbnailCache {
     private static func spaceKey(fromFilename filename: String) -> String? {
         let basename = (filename as NSString).deletingPathExtension
         return basename.removingPercentEncoding
+    }
+
+    private static var hasScreenCaptureAccess: Bool {
+        CGPreflightScreenCaptureAccess()
+    }
+
+    @discardableResult
+    private static func requestScreenCaptureAccess() -> Bool {
+        CGRequestScreenCaptureAccess()
     }
 }

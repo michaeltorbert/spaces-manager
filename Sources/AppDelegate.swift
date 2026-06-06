@@ -189,6 +189,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 menu.addItem(item)
             }
         }
+
+        if !thumbnailCache.hasScreenCaptureAccess {
+            menu.addItem(NSMenuItem.separator())
+            let enableThumbnails = NSMenuItem(title: "Enable Space Thumbnails…",
+                                              action: #selector(requestThumbnailAccess(_:)),
+                                              keyEquivalent: "")
+            enableThumbnails.target = self
+            enableThumbnails.view = MenuCommandRowView(
+                title: "Enable Space Thumbnails…",
+                shortcut: "",
+                action: { [weak self] in self?.requestThumbnailAccess(nil) }
+            )
+            menu.addItem(enableThumbnails)
+        }
+
         menu.addItem(NSMenuItem.separator())
 
         let renameCurrent = NSMenuItem(title: "Rename Current Space…",
@@ -242,6 +257,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
               let sp = s.spaces.first(where: { $0.key == activeKey })
         else { return }
         thumbnailCache.capture(spaceKey: activeKey, displayID: sp.displayID)
+    }
+
+    @objc private func requestThumbnailAccess(_ sender: Any?) {
+        if thumbnailCache.hasScreenCaptureAccess {
+            captureActiveThumbnail()
+            return
+        }
+
+        if thumbnailCache.requestScreenCaptureAccess() {
+            captureActiveThumbnail()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                self?.refresh()
+            }
+            return
+        }
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Enable space thumbnails"
+        alert.informativeText = "Space thumbnails need macOS Screen Recording permission. If you grant it in System Settings, quit and reopen SpacesManager before testing thumbnails again. Development builds launched from Terminal may appear as Terminal in the permission list."
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            openScreenRecordingSettings()
+        }
+    }
+
+    private func openScreenRecordingSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") else {
+            NSSound.beep()
+            return
+        }
+        NSWorkspace.shared.open(url)
     }
 
     private func pruneThumbnails(in snap: Snapshot) {
@@ -457,7 +506,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = "Allow SpacesManager to switch spaces"
-        alert.informativeText = "Click-to-switch uses macOS Accessibility permission to send the same Dock swipe event as a trackpad space switch. SpacesManager does not need Screen Recording or SIP changes."
+        alert.informativeText = "Click-to-switch uses macOS Accessibility permission to send the same Dock swipe event as a trackpad space switch. This switching path does not need Screen Recording or SIP changes."
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)

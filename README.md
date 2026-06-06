@@ -15,7 +15,8 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 - **Visited spaces show cached thumbnails** in the menu. A thumbnail is captured
   shortly after you switch to a space, stored locally, and shown with its capture
   age. If Screen Recording permission is unavailable, SpacesManager falls back
-  to the existing app/display icons.
+  to the existing app/display icons and shows **Enable Space Thumbnails…** in
+  the menu.
 - **Click a space row** to switch to it. The first switch prompts for Accessibility permission so SpacesManager can send the same Dock swipe event as a trackpad space switch. Full-screen app spaces appear in the menu and can be targeted too.
 - **Hover a normal desktop space row** for quick buttons: move the frontmost window there, rename, or delete the space. Delete asks for confirmation first.
 - **Brief HUD** fades in at the top of the screen on every space switch, showing the name.
@@ -35,6 +36,11 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 No Apple Developer account, no entitlements, no SIP changes. Click-to-switch
 requires Accessibility permission. Space thumbnails require Screen Recording
 permission; without it, the menu still works and falls back to app/display icons.
+Choose **Enable Space Thumbnails…** from the menu to request access. After
+granting Screen Recording in System Settings, quit and reopen SpacesManager so
+macOS applies the permission before testing thumbnails again. If you launch a
+development build from Terminal, macOS may list Terminal as the app requesting
+Screen Recording.
 
 Because SpacesManager is a menu-bar agent (`LSUIElement=true`), its app icon appears in Finder, Get Info, Spotlight, and release artifacts, not in the Dock or app switcher.
 
