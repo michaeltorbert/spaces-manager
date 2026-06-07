@@ -12,8 +12,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var editorWindow: NSWindow?
     private var editorFields: [(key: String, field: NSTextField)] = []
     private var hasShownSwitchPermissionAlert = false
+    private weak var maintenanceBuildInfoItem: NSMenuItem?
     private weak var maintenanceCheckItem: NSMenuItem?
     private weak var maintenanceQuitItem: NSMenuItem?
+    private weak var maintenanceBuildInfoRow: MenuCommandRowView?
     private weak var maintenanceCheckRow: MenuCommandRowView?
     private weak var maintenanceQuitRow: MenuCommandRowView?
     private var maintenanceOptionLocalMonitor: Any?
@@ -215,6 +217,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        let buildInformation = NSMenuItem(title: buildInformationMenuTitle(optionDown: isOptionKeyDown),
+                                          action: nil,
+                                          keyEquivalent: "")
+        buildInformation.isEnabled = false
+        let buildInformationRow = MenuCommandRowView(
+            title: buildInformationMenuTitle(optionDown: isOptionKeyDown),
+            shortcut: "",
+            isInteractive: false
+        )
+        buildInformation.view = buildInformationRow
+        menu.addItem(buildInformation)
+        maintenanceBuildInfoItem = buildInformation
+        maintenanceBuildInfoRow = buildInformationRow
+
         let checkForUpdates = NSMenuItem(title: updateMenuTitle,
                                          action: #selector(checkForUpdates(_:)),
                                          keyEquivalent: "")
@@ -369,6 +385,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard force || lastMaintenanceOptionDown != optionDown else { return }
         lastMaintenanceOptionDown = optionDown
 
+        if let row = maintenanceBuildInfoRow {
+            let title = buildInformationMenuTitle(optionDown: optionDown)
+            row.update(title: title, shortcut: "")
+            maintenanceBuildInfoItem?.title = title
+        }
+
         if let row = maintenanceCheckRow {
             configureMaintenanceRow(
                 row: row,
@@ -443,6 +465,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var updateMenuTitle: String {
         isLocalDevelopmentBuild ? "Switch to Released Version…" : "Check for Updates…"
+    }
+
+    private func buildInformationMenuTitle(optionDown: Bool) -> String {
+        if isLocalDevelopmentBuild {
+            let baseTitle: String
+            if let baseVersion = bundleInfoString(for: "SMDevelopmentBaseVersion") {
+                baseTitle = "\(baseVersion) dev"
+            } else {
+                baseTitle = "dev"
+            }
+            if optionDown,
+               let identifier = bundleInfoString(for: "SMBuildIdentifier") {
+                return identifier
+            }
+            return baseTitle
+        }
+
+        let version = bundleInfoString(for: "CFBundleShortVersionString")
+        let build = bundleInfoString(for: "CFBundleVersion")
+
+        switch (version, build) {
+        case let (.some(version), .some(build)):
+            return optionDown ? "\(version) (\(build))" : version
+        case let (.some(version), .none):
+            return version
+        case let (.none, .some(build)):
+            return "build \(build)"
+        case (.none, .none):
+            return "version unavailable"
+        }
+    }
+
+    private func bundleInfoString(for key: String) -> String? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: key) else { return nil }
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+        return nil
     }
 
     @objc private func relaunchSpacesManager() {
@@ -706,11 +770,16 @@ private final class MenuCommandRowView: NSView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let shortcutLabel = NSTextField(labelWithString: "")
     private var shortcutWidthConstraint: NSLayoutConstraint!
-    private var action: () -> Void
+    private var action: (() -> Void)?
+    private let isInteractive: Bool
     private var trackingArea: NSTrackingArea?
     private var isHovered = false
 
-    init(title: String, shortcut: String, action: @escaping () -> Void) {
+    init(title: String,
+         shortcut: String,
+         isInteractive: Bool = true,
+         action: (() -> Void)? = nil) {
+        self.isInteractive = isInteractive
         self.action = action
         super.init(frame: NSRect(x: 0, y: 0, width: Self.rowWidth, height: 30))
         wantsLayer = true
@@ -718,7 +787,7 @@ private final class MenuCommandRowView: NSView {
 
         titleLabel.stringValue = title
         titleLabel.font = .menuFont(ofSize: 0)
-        titleLabel.textColor = .labelColor
+        titleLabel.textColor = isInteractive ? .labelColor : .secondaryLabelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
         titleLabel.usesSingleLineMode = true
@@ -758,34 +827,37 @@ private final class MenuCommandRowView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        bounds.contains(point) ? self : nil
+        isInteractive && bounds.contains(point) ? self : nil
     }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let trackingArea { removeTrackingArea(trackingArea) }
+        guard isInteractive else { return }
         let opts: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
         trackingArea = NSTrackingArea(rect: bounds, options: opts, owner: self, userInfo: nil)
         addTrackingArea(trackingArea!)
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard isInteractive else { return }
         isHovered = true
         needsDisplay = true
     }
 
     override func mouseExited(with event: NSEvent) {
+        guard isInteractive else { return }
         isHovered = false
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
-        let currentAction = action
+        guard isInteractive, let currentAction = action else { return }
         enclosingMenuItem?.menu?.cancelTracking()
         DispatchQueue.main.async { currentAction() }
     }
 
-    func update(title: String, shortcut: String, action: @escaping () -> Void) {
+    func update(title: String, shortcut: String, action: (() -> Void)? = nil) {
         if titleLabel.stringValue != title {
             titleLabel.stringValue = title
         }
@@ -795,11 +867,13 @@ private final class MenuCommandRowView: NSView {
         let hasShortcut = !shortcut.isEmpty
         shortcutLabel.isHidden = !hasShortcut
         shortcutWidthConstraint.constant = hasShortcut ? 48 : 0
-        self.action = action
+        if isInteractive {
+            self.action = action
+        }
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard isHovered else { return }
+        guard isInteractive && isHovered else { return }
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 1),
                                 xRadius: 4,
                                 yRadius: 4)
