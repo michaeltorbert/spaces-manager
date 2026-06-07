@@ -25,19 +25,3 @@ func SLSCopySpacesForWindows(_ cid: CGSConnectionID,
 
 @_silgen_name("SLSSpaceGetType")
 func SLSSpaceGetType(_ cid: CGSConnectionID, _ space: CGSSpaceID) -> Int32
-
-@_silgen_name("SLSMoveWindowsToManagedSpace")
-func SLSMoveWindowsToManagedSpace(_ cid: CGSConnectionID,
-                                  _ windowIDs: CFArray,
-                                  _ space: CGSSpaceID)
-
-@_silgen_name("SLSSpaceSetCompatID")
-func SLSSpaceSetCompatID(_ cid: CGSConnectionID,
-                         _ space: CGSSpaceID,
-                         _ workspace: Int32) -> CGError
-
-@_silgen_name("SLSSetWindowListWorkspace")
-func SLSSetWindowListWorkspace(_ cid: CGSConnectionID,
-                               _ windowIDs: UnsafeMutablePointer<UInt32>,
-                               _ count: Int32,
-                               _ workspace: Int32) -> CGError

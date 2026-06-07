@@ -7,9 +7,7 @@ final class SpaceRowView: NSView {
     private let canSwitch: Bool
     private let canRename: Bool
     private let canDelete: Bool
-    private let canMoveWindow: Bool
     private let onSwitch: () -> Void
-    private let onMoveWindow: () -> Void
     private let onRename: () -> Void
     private let onDelete: () -> Void
 
@@ -17,9 +15,6 @@ final class SpaceRowView: NSView {
     private let nameLabel = NSTextField(labelWithString: "")
     private let checkmark = NSImageView()
     private let actionStack = NSStackView()
-    private let moveWindowAction = SpaceRowActionButton(symbolName: "arrow.right.square",
-                                                        accessibilityDescription: "Move Frontmost Window Here",
-                                                        tintColor: .systemGreen)
     private let renameAction = SpaceRowActionButton(symbolName: "pencil",
                                                     accessibilityDescription: "Rename…",
                                                     tintColor: .controlAccentColor)
@@ -33,25 +28,19 @@ final class SpaceRowView: NSView {
     init(name: String, iconImage: NSImage?,
          isActive: Bool, canSwitch: Bool,
          canRename: Bool, canDelete: Bool,
-         canMoveWindow: Bool,
          onSwitch: @escaping () -> Void,
-         onMoveWindow: @escaping () -> Void,
          onRename: @escaping () -> Void,
          onDelete: @escaping () -> Void) {
         self.isActive = isActive
         self.canSwitch = canSwitch
         self.canRename = canRename
         self.canDelete = canDelete
-        self.canMoveWindow = canMoveWindow
         self.onSwitch = onSwitch
-        self.onMoveWindow = onMoveWindow
         self.onRename = onRename
         self.onDelete = onDelete
         super.init(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
         wantsLayer = true
         autoresizingMask = [.width]
-        moveWindowAction.target = self
-        moveWindowAction.action = #selector(moveWindowClicked)
         renameAction.target = self
         renameAction.action = #selector(renameClicked)
         deleteAction.target = self
@@ -89,7 +78,6 @@ final class SpaceRowView: NSView {
         actionStack.alignment = .centerY
         actionStack.spacing = 6
         actionStack.translatesAutoresizingMaskIntoConstraints = false
-        actionStack.addArrangedSubview(moveWindowAction)
         actionStack.addArrangedSubview(renameAction)
         actionStack.addArrangedSubview(deleteAction)
         addSubview(actionStack)
@@ -156,13 +144,6 @@ final class SpaceRowView: NSView {
     override func mouseUp(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
 
-        if !moveWindowAction.isHidden && contains(point, in: moveWindowAction) {
-            let action = onMoveWindow
-            enclosingMenuItem?.menu?.cancelTracking()
-            DispatchQueue.main.async { action() }
-            return
-        }
-
         if !deleteAction.isHidden && contains(point, in: deleteAction) {
             let action = onDelete
             enclosingMenuItem?.menu?.cancelTracking()
@@ -183,18 +164,9 @@ final class SpaceRowView: NSView {
 
     @discardableResult
     func showContextMenu(from event: NSEvent) -> Bool {
-        guard canMoveWindow || canRename || canDelete else { return false }
+        guard canRename || canDelete else { return false }
 
         let ctx = NSMenu()
-        if canMoveWindow {
-            let moveWindow = NSMenuItem(title: "Move Frontmost Window Here",
-                                        action: #selector(moveWindowClicked),
-                                        keyEquivalent: "")
-            moveWindow.target = self
-            ctx.addItem(moveWindow)
-            ctx.addItem(NSMenuItem.separator())
-        }
-
         if canRename {
             let rename = NSMenuItem(title: "Rename…",
                                     action: #selector(renameClicked),
@@ -219,11 +191,6 @@ final class SpaceRowView: NSView {
         showContextMenu(from: event)
     }
 
-    @objc private func moveWindowClicked() {
-        enclosingMenuItem?.menu?.cancelTracking()
-        onMoveWindow()
-    }
-
     @objc private func renameClicked() {
         let action = onRename
         enclosingMenuItem?.menu?.cancelTracking()
@@ -241,9 +208,8 @@ final class SpaceRowView: NSView {
     }
 
     private func updateActionIconVisibility() {
-        let hasVisibleAction = isHovered && (canMoveWindow || canRename || canDelete)
+        let hasVisibleAction = isHovered && (canRename || canDelete)
         actionStack.isHidden = !hasVisibleAction
-        moveWindowAction.isHidden = !hasVisibleAction || !canMoveWindow
         renameAction.isHidden = !hasVisibleAction || !canRename
         deleteAction.isHidden = !hasVisibleAction || !canDelete
     }
