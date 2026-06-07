@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let store = NameStore()
     private let hud = HUDWindow()
+    private let thumbnailCache = ThumbnailCache()
     private var lastActiveKey: String?
     private var editorWindow: NSWindow?
     private var editorFields: [(key: String, field: NSTextField)] = []
@@ -35,8 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
         statusItem.menu = menu
+        thumbnailCache.loadFromDisk()
         updaterController.startUpdater()
         refresh()
+        captureVisibleThumbnails()
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(activeSpaceChanged),
@@ -74,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func refresh() {
         let snap = SpacesProvider.snapshot()
+        pruneThumbnails(in: snap)
         lastActiveKey = snap.activeKey
         updateStatusTitle(snap: snap)
     }
@@ -84,6 +88,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             lastActiveKey = snap.activeKey
             updateStatusTitle(snap: snap)
         }
+        pruneThumbnails(in: snap)
+        captureVisibleThumbnails(snap: snap)
+
         guard let activeKey = snap.activeKey, activeKey != lastActiveKey,
               let sp = snap.spaces.first(where: { $0.key == activeKey })
         else { return }
@@ -121,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
         lastMaintenanceOptionDown = nil
         let snap = SpacesProvider.snapshot()
+        pruneThumbnails(in: snap)
         lastActiveKey = snap.activeKey
         let grouped = Dictionary(grouping: snap.spaces, by: { $0.displayID })
         let displayKeys = grouped.keys.sorted()
@@ -163,6 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let item = NSMenuItem()
                 item.view = SpaceRowView(
                     name: displayed,
+                    thumbnail: thumbnailCache.thumbnail(for: sp.key),
                     iconImage: dominantApp?.icon,
                     isActive: isActive,
                     canSwitch: canSwitch,
@@ -175,6 +184,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 menu.addItem(item)
             }
         }
+
+        if !thumbnailCache.hasScreenCaptureAccess {
+            menu.addItem(NSMenuItem.separator())
+            let enableThumbnails = NSMenuItem(title: "Enable Space Thumbnails…",
+                                              action: #selector(requestThumbnailAccess(_:)),
+                                              keyEquivalent: "")
+            enableThumbnails.target = self
+            enableThumbnails.view = MenuCommandRowView(
+                title: "Enable Space Thumbnails…",
+                shortcut: "",
+                action: { [weak self] in self?.requestThumbnailAccess(nil) }
+            )
+            menu.addItem(enableThumbnails)
+        }
+
         menu.addItem(NSMenuItem.separator())
 
         let renameCurrent = NSMenuItem(title: "Rename Current Space…",
@@ -220,6 +244,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         maintenanceQuitRow = quitRow
 
         updateMaintenanceItems(optionDown: isOptionKeyDown, force: true)
+    }
+
+    private func captureVisibleThumbnails(snap: Snapshot? = nil) {
+        let s = snap ?? SpacesProvider.snapshot()
+        var capturedCurrentDisplay = false
+
+        for (displayID, key) in s.currentKeysByDisplay {
+            guard let sp = s.spaces.first(where: {
+                $0.displayID == displayID && $0.key == key
+            }) else { continue }
+
+            capturedCurrentDisplay = true
+            thumbnailCache.capture(
+                spaceKey: key,
+                displayID: sp.displayID,
+                isCurrent: { [weak self] in
+                    self?.isCurrent(spaceKey: key, displayID: sp.displayID) ?? false
+                }
+            )
+        }
+
+        if !capturedCurrentDisplay,
+           let activeKey = s.activeKey,
+           let sp = s.spaces.first(where: { $0.key == activeKey }) {
+            thumbnailCache.capture(
+                spaceKey: activeKey,
+                displayID: sp.displayID,
+                isCurrent: { [weak self] in
+                    self?.isCurrent(spaceKey: activeKey, displayID: sp.displayID) ?? false
+                }
+            )
+        }
+    }
+
+    private func isCurrent(spaceKey: String, displayID: String) -> Bool {
+        let snap = SpacesProvider.snapshot()
+        if let currentKey = snap.currentKeysByDisplay[displayID] {
+            return currentKey == spaceKey
+        }
+        return snap.activeKey == spaceKey
+    }
+
+    @objc private func requestThumbnailAccess(_ sender: Any?) {
+        if thumbnailCache.hasScreenCaptureAccess {
+            captureVisibleThumbnails()
+            return
+        }
+
+        if thumbnailCache.requestScreenCaptureAccess() {
+            captureVisibleThumbnails()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                self?.refresh()
+            }
+            return
+        }
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Enable space thumbnails"
+        alert.informativeText = "Space thumbnails need macOS Screen Recording permission. For this Terminal-launched development build, turn on Terminal in System Settings. For an installed app, turn on SpacesManager if it appears. After granting access, quit and reopen SpacesManager before testing thumbnails again."
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            openScreenRecordingSettings()
+        }
+    }
+
+    private func openScreenRecordingSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") else {
+            NSSound.beep()
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func pruneThumbnails(in snap: Snapshot) {
+        thumbnailCache.prune(validKeys: Set(snap.spaces.map { $0.key }))
     }
 
     private func startMaintenanceOptionTracking() {
@@ -410,7 +512,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = "Allow SpacesManager to switch spaces"
-        alert.informativeText = "Click-to-switch uses macOS Accessibility permission to send the same Dock swipe event as a trackpad space switch. SpacesManager does not need Screen Recording or SIP changes."
+        alert.informativeText = "Click-to-switch uses macOS Accessibility permission to send the same Dock swipe event as a trackpad space switch. For this Terminal-launched development build, turn on Terminal in Accessibility. For an installed app, turn on SpacesManager if it appears. This switching path does not need Screen Recording or SIP changes."
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
@@ -600,6 +702,7 @@ extension AppDelegate: NSWindowDelegate {
 }
 
 private final class MenuCommandRowView: NSView {
+    private static let rowWidth: CGFloat = 340
     private let titleLabel = NSTextField(labelWithString: "")
     private let shortcutLabel = NSTextField(labelWithString: "")
     private var shortcutWidthConstraint: NSLayoutConstraint!
@@ -609,7 +712,7 @@ private final class MenuCommandRowView: NSView {
 
     init(title: String, shortcut: String, action: @escaping () -> Void) {
         self.action = action
-        super.init(frame: NSRect(x: 0, y: 0, width: 300, height: 30))
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.rowWidth, height: 30))
         wantsLayer = true
         autoresizingMask = [.width]
 
@@ -651,7 +754,7 @@ private final class MenuCommandRowView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: 300, height: 30)
+        NSSize(width: Self.rowWidth, height: 30)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {

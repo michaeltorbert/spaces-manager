@@ -12,6 +12,11 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 
 - **Menu bar item** shows the current space's custom name (falls back to "Desktop N").
 - **Click the menu bar item** to see all spaces grouped by display name, with the active one marked.
+- **Visited spaces show cached thumbnails** in the menu. A thumbnail is captured
+  shortly after you switch to a space, stored locally, and shown with its capture
+  age. If Screen Recording permission is unavailable, SpacesManager falls back
+  to the existing app/display icons and shows **Enable Space Thumbnails…** in
+  the menu.
 - **Click a space row** to switch to it. The first switch prompts for Accessibility permission so SpacesManager can send the same Dock swipe event as a trackpad space switch. Full-screen app spaces appear in the menu and can be targeted too.
 - **Hover a normal desktop space row** for quick buttons to rename or delete the space. Delete asks for confirmation first.
 - **Brief HUD** fades in at the top of the screen on every space switch, showing the name.
@@ -28,7 +33,18 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
 - macOS 13 or later (built with `-target arm64-apple-macos13`)
 - Xcode Command Line Tools (`xcode-select --install`) for `swiftc` and `codesign`
 
-No Apple Developer account, no entitlements, no Screen Recording permission, no SIP changes. Click-to-switch requires Accessibility permission.
+No Apple Developer account, no entitlements, no SIP changes. Click-to-switch
+requires Accessibility permission. If you launch a development build from
+Terminal, turn on Terminal in Accessibility; an installed build may appear as
+SpacesManager instead.
+
+Space thumbnails require Screen Recording permission; without it, the menu still
+works and falls back to app/display icons. Choose **Enable Space Thumbnails…**
+from the menu to request access. After granting Screen Recording in System
+Settings, quit and reopen SpacesManager so macOS applies the permission before
+testing thumbnails again. If you launch a development build from Terminal, turn
+on Terminal in the Screen Recording list; an installed build may appear as
+SpacesManager instead.
 
 Because SpacesManager is a menu-bar agent (`LSUIElement=true`), its app icon appears in Finder, Get Info, Spotlight, and release artifacts, not in the Dock or app switcher.
 

@@ -3,6 +3,12 @@ import AppKit
 // MARK: - Custom menu row
 
 final class SpaceRowView: NSView {
+    private static let rowWidth: CGFloat = 340
+    private static let compactRowHeight: CGFloat = 26
+    private static let thumbnailRowHeight: CGFloat = 72
+    private static let thumbnailSize = NSSize(width: 96, height: 60)
+
+    private let rowHeight: CGFloat
     private let isActive: Bool
     private let canSwitch: Bool
     private let canRename: Bool
@@ -11,8 +17,11 @@ final class SpaceRowView: NSView {
     private let onRename: () -> Void
     private let onDelete: () -> Void
 
+    private let thumbnailView = NSImageView()
     private let iconView = NSImageView()
+    private let textStack = NSStackView()
     private let nameLabel = NSTextField(labelWithString: "")
+    private let ageLabel = NSTextField(labelWithString: "")
     private let checkmark = NSImageView()
     private let actionStack = NSStackView()
     private let renameAction = SpaceRowActionButton(symbolName: "pencil",
@@ -25,12 +34,18 @@ final class SpaceRowView: NSView {
     private var trackingArea: NSTrackingArea?
     private var isHovered = false
 
-    init(name: String, iconImage: NSImage?,
+    init(name: String,
+         thumbnail: SpaceThumbnail?,
+         iconImage: NSImage?,
          isActive: Bool, canSwitch: Bool,
          canRename: Bool, canDelete: Bool,
          onSwitch: @escaping () -> Void,
          onRename: @escaping () -> Void,
          onDelete: @escaping () -> Void) {
+        let resolvedRowHeight = thumbnail == nil
+            ? Self.compactRowHeight
+            : Self.thumbnailRowHeight
+        self.rowHeight = resolvedRowHeight
         self.isActive = isActive
         self.canSwitch = canSwitch
         self.canRename = canRename
@@ -38,13 +53,32 @@ final class SpaceRowView: NSView {
         self.onSwitch = onSwitch
         self.onRename = onRename
         self.onDelete = onDelete
-        super.init(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
+        super.init(frame: NSRect(x: 0, y: 0,
+                                 width: Self.rowWidth,
+                                 height: resolvedRowHeight))
         wantsLayer = true
         autoresizingMask = [.width]
         renameAction.target = self
         renameAction.action = #selector(renameClicked)
         deleteAction.target = self
         deleteAction.action = #selector(deleteClicked)
+
+        if let thumbnail {
+            thumbnailView.image = thumbnail.image
+            thumbnailView.toolTip = Self.ageText(for: thumbnail.capturedAt)
+        }
+        thumbnailView.imageScaling = .scaleProportionallyUpOrDown
+        thumbnailView.wantsLayer = true
+        thumbnailView.layer?.cornerRadius = 4
+        thumbnailView.layer?.masksToBounds = true
+        thumbnailView.layer?.borderWidth = 0.5
+        thumbnailView.layer?.borderColor = NSColor.separatorColor
+            .withAlphaComponent(0.85).cgColor
+        thumbnailView.layer?.backgroundColor = NSColor.separatorColor
+            .withAlphaComponent(0.35).cgColor
+        thumbnailView.isHidden = thumbnail == nil
+        thumbnailView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(thumbnailView)
 
         if let iconImage {
             iconView.image = iconImage
@@ -55,6 +89,7 @@ final class SpaceRowView: NSView {
             iconView.contentTintColor = .secondaryLabelColor
         }
         iconView.imageScaling = .scaleProportionallyDown
+        iconView.isHidden = thumbnail != nil
         iconView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(iconView)
 
@@ -65,7 +100,25 @@ final class SpaceRowView: NSView {
         nameLabel.maximumNumberOfLines = 1
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(nameLabel)
+
+        if let thumbnail {
+            ageLabel.stringValue = Self.ageText(for: thumbnail.capturedAt)
+        }
+        ageLabel.font = .systemFont(ofSize: 11)
+        ageLabel.textColor = .secondaryLabelColor
+        ageLabel.usesSingleLineMode = true
+        ageLabel.maximumNumberOfLines = 1
+        ageLabel.lineBreakMode = .byTruncatingTail
+        ageLabel.isHidden = thumbnail == nil
+        ageLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 2
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+        textStack.addArrangedSubview(nameLabel)
+        textStack.addArrangedSubview(ageLabel)
+        addSubview(textStack)
 
         checkmark.image = NSImage(systemSymbolName: "checkmark",
                                   accessibilityDescription: nil)
@@ -82,24 +135,37 @@ final class SpaceRowView: NSView {
         actionStack.addArrangedSubview(deleteAction)
         addSubview(actionStack)
 
-        NSLayoutConstraint.activate([
-            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 16),
-            iconView.heightAnchor.constraint(equalToConstant: 16),
+        var constraints = [
+            textStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: actionStack.leadingAnchor, constant: -10),
 
-            nameLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
-            nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: actionStack.leadingAnchor, constant: -8),
-
-            actionStack.trailingAnchor.constraint(equalTo: checkmark.leadingAnchor, constant: -8),
+            actionStack.trailingAnchor.constraint(equalTo: checkmark.leadingAnchor, constant: -10),
             actionStack.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            checkmark.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            checkmark.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
             checkmark.centerYAnchor.constraint(equalTo: centerYAnchor),
-            checkmark.widthAnchor.constraint(equalToConstant: 14),
-            checkmark.heightAnchor.constraint(equalToConstant: 14),
-        ])
+            checkmark.widthAnchor.constraint(equalToConstant: 16),
+            checkmark.heightAnchor.constraint(equalToConstant: 16),
+        ]
+
+        if thumbnail == nil {
+            constraints.append(contentsOf: [
+                iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+                iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+                iconView.widthAnchor.constraint(equalToConstant: 16),
+                iconView.heightAnchor.constraint(equalToConstant: 16),
+                textStack.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
+            ])
+        } else {
+            constraints.append(contentsOf: [
+                thumbnailView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+                thumbnailView.centerYAnchor.constraint(equalTo: centerYAnchor),
+                thumbnailView.widthAnchor.constraint(equalToConstant: Self.thumbnailSize.width),
+                thumbnailView.heightAnchor.constraint(equalToConstant: Self.thumbnailSize.height),
+                textStack.leadingAnchor.constraint(equalTo: thumbnailView.trailingAnchor, constant: 12),
+            ])
+        }
+        NSLayoutConstraint.activate(constraints)
 
         updateActionIconVisibility()
     }
@@ -107,7 +173,7 @@ final class SpaceRowView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: 300, height: 26)
+        NSSize(width: Self.rowWidth, height: rowHeight)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -214,7 +280,35 @@ final class SpaceRowView: NSView {
         deleteAction.isHidden = !hasVisibleAction || !canDelete
     }
 
+    private static func ageText(for capturedAt: Date) -> String {
+        let seconds = max(0, Int(Date().timeIntervalSince(capturedAt)))
+        if seconds < 60 { return "Updated just now" }
+
+        let minutes = seconds / 60
+        if minutes < 60 {
+            return "Updated \(minutes)m ago"
+        }
+
+        let hours = minutes / 60
+        if hours < 24 {
+            return "Updated \(hours)h ago"
+        }
+
+        let days = hours / 24
+        return "Updated \(days)d ago"
+    }
+
     override func draw(_ dirtyRect: NSRect) {
+        if isActive {
+            let activePath = NSBezierPath(
+                roundedRect: bounds.insetBy(dx: 5, dy: 1),
+                xRadius: 5,
+                yRadius: 5
+            )
+            NSColor.controlAccentColor.withAlphaComponent(0.08).setFill()
+            activePath.fill()
+        }
+
         guard isHovered else { return }
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 1),
                                 xRadius: 4, yRadius: 4)
