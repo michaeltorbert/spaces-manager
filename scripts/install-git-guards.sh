@@ -8,7 +8,7 @@ remote_url="$(git remote get-url origin 2>/dev/null || true)"
 case "$remote_url" in
   https://github.com/michaeltorbert/spaces-manager.git|\
   git@github.com:michaeltorbert/spaces-manager.git|\
-  ssh://git@github.com:michaeltorbert/spaces-manager.git)
+  ssh://git@github.com/michaeltorbert/spaces-manager.git)
     ;;
   *)
     printf 'Refusing to install hooks: origin is %s, not michaeltorbert/spaces-manager.\n' "$remote_url" >&2
