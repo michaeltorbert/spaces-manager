@@ -35,10 +35,16 @@ Because SpacesManager is a menu-bar agent (`LSUIElement=true`), its app icon app
 ## Build
 
 ```sh
+./scripts/preflight.sh
 ./build.sh
 ```
 
-On the first run this downloads Sparkle 2.9.2 (~15 MB) into `Frameworks/` and caches it for subsequent builds. The script then compiles `Sources/*.swift`, copies `Sparkle.framework` into the app bundle, strips xattrs, ad-hoc signs the nested XPC services + framework + outer app in that order, and verifies the chain passes `codesign --verify --deep --strict`.
+`scripts/preflight.sh` checks the repo guardrails that protect the ad-hoc
+Sparkle setup. On the first build, `build.sh` downloads Sparkle 2.9.2 (~15 MB)
+into `Frameworks/` and caches it for subsequent builds. The script then
+compiles `Sources/*.swift`, copies `Sparkle.framework` into the app bundle,
+strips xattrs, ad-hoc signs the nested XPC services + framework + outer app in
+that order, and verifies the chain passes `codesign --verify --deep --strict`.
 
 ## Install
 
@@ -72,7 +78,9 @@ Sources/                       Swift source split by concern
 Assets/                        app icon source, generator script, and compiled .icns
 Info.plist                      bundle metadata + Sparkle keys (SUFeedURL, SUPublicEDKey)
 build.sh                        vendors Sparkle, runs swiftc, codesigns the nested chain, verifies
+scripts/preflight.sh            fast guardrails for Sparkle/version/signing rules
 Package.swift                   IDE indexing only; the real build is build.sh
+.github/workflows/ci.yml        PR/push build and preflight guardrails
 .github/workflows/release.yml   tag-triggered: build, sign, regenerate appcast, publish
 Frameworks/                     gitignored; populated by build.sh on first run
 LICENSE                         MIT
@@ -80,7 +88,7 @@ README.md                       this file
 RELEASING.md                    release runbook (cut a release, rollback, key-management notes)
 ```
 
-Small raw-`swiftc` Swift app. No Xcode project; `Package.swift` is for IDE indexing only. Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. If the app icon changes, regenerate `Assets/AppIcon.svg` and `Assets/AppIcon.icns` with `Assets/build-icon.sh`. Local dev builds mark themselves and use a low internal build number so **Switch to Released Version…** can hand off to Sparkle's normal update flow; background Sparkle checks are blocked for dev builds so they are not silently replaced while testing. For real releases, push a tag.
+Small raw-`swiftc` Swift app. No Xcode project; `Package.swift` is for IDE indexing only. Sparkle is vendored as a prebuilt framework copied into `Contents/Frameworks/`. Edit the source, run `./scripts/preflight.sh && ./build.sh`, and (during development) drag the new `build/SpacesManager.app` over the installed copy. If the app icon changes, regenerate `Assets/AppIcon.svg` and `Assets/AppIcon.icns` with `Assets/build-icon.sh`. Local dev builds mark themselves and use a low internal build number so **Switch to Released Version…** can hand off to Sparkle's normal update flow; background Sparkle checks are blocked for dev builds so they are not silently replaced while testing. For real releases, push a tag.
 
 ---
 

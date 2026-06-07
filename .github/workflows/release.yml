@@ -34,6 +34,9 @@ jobs:
             exit 1
           fi
 
+      - name: Run preflight guardrails
+        run: ./scripts/preflight.sh
+
       - name: Bump Info.plist version
         run: |
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ steps.ver.outputs.short }}" Info.plist
@@ -78,6 +81,9 @@ jobs:
             --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${{ steps.ver.outputs.tag }}/" \
             --link "https://github.com/${{ github.repository }}" \
             stage
+
+      - name: Validate appcast XML
+        run: xmllint --noout stage/appcast.xml
 
       - name: Attach zip to GitHub Release
         env:
