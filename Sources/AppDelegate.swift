@@ -469,11 +469,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func buildInformationMenuTitle(optionDown: Bool) -> String {
         if isLocalDevelopmentBuild {
+            let baseTitle: String
+            if let baseVersion = bundleInfoString(for: "SMDevelopmentBaseVersion") {
+                baseTitle = "\(baseVersion) dev"
+            } else {
+                baseTitle = "dev"
+            }
             if optionDown,
                let identifier = bundleInfoString(for: "SMBuildIdentifier") {
-                return "SpacesManager dev \(identifier)"
+                return "\(baseTitle) (\(identifier))"
             }
-            return "SpacesManager dev"
+            return baseTitle
         }
 
         let version = bundleInfoString(for: "CFBundleShortVersionString")
@@ -481,13 +487,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         switch (version, build) {
         case let (.some(version), .some(build)):
-            return optionDown ? "SpacesManager \(version) (\(build))" : "SpacesManager \(version)"
+            return optionDown ? "\(version) (\(build))" : version
         case let (.some(version), .none):
-            return "SpacesManager \(version)"
+            return version
         case let (.none, .some(build)):
-            return "SpacesManager build \(build)"
+            return "build \(build)"
         case (.none, .none):
-            return "SpacesManager"
+            return "version unavailable"
         }
     }
 

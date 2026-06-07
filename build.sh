@@ -58,12 +58,20 @@ if [ -z "${CI:-}" ]; then
     build_identifier="${build_identifier}-dirty"
   fi
   build_identifier="${build_identifier} ($(date '+%Y-%m-%d %H:%M:%S %z'))"
+  development_base_version="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)"
+  if [ -n "$development_base_version" ]; then
+    development_base_version="${development_base_version#v}"
+  fi
 
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 0" "$APP/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Add :SMDevelopmentBuild bool true" "$APP/Contents/Info.plist" 2>/dev/null \
     || /usr/libexec/PlistBuddy -c "Set :SMDevelopmentBuild true" "$APP/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Add :SMBuildIdentifier string $build_identifier" "$APP/Contents/Info.plist" 2>/dev/null \
     || /usr/libexec/PlistBuddy -c "Set :SMBuildIdentifier $build_identifier" "$APP/Contents/Info.plist"
+  if [ -n "$development_base_version" ]; then
+    /usr/libexec/PlistBuddy -c "Add :SMDevelopmentBaseVersion string $development_base_version" "$APP/Contents/Info.plist" 2>/dev/null \
+      || /usr/libexec/PlistBuddy -c "Set :SMDevelopmentBaseVersion $development_base_version" "$APP/Contents/Info.plist"
+  fi
 fi
 
 # Copy Sparkle.framework into the bundle, preserving symlinks.
