@@ -61,7 +61,9 @@ final class ThumbnailCache {
         thumbnails[spaceKey]
     }
 
-    func capture(spaceKey: String, displayID: String) {
+    func capture(spaceKey: String,
+                 displayID: String,
+                 isCurrent: @escaping () -> Bool = { true }) {
         guard !spaceKey.isEmpty,
               !inFlightKeys.contains(spaceKey),
               Self.hasScreenCaptureAccess,
@@ -71,23 +73,28 @@ final class ThumbnailCache {
         inFlightKeys.insert(spaceKey)
         DispatchQueue.main.asyncAfter(deadline: .now() + captureDelay) { [weak self] in
             guard let self else { return }
+            guard isCurrent() else {
+                self.inFlightKeys.remove(spaceKey)
+                return
+            }
+
             self.ioQueue.async { [weak self] in
                 guard let self else { return }
                 let result = self.captureThumbnail(in: captureRect)
-                if let pngData = result?.pngData {
-                    self.write(pngData: pngData, for: spaceKey)
-                }
 
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     self.inFlightKeys.remove(spaceKey)
-                    guard let result else { return }
+                    guard let result, isCurrent() else { return }
                     self.thumbnails[spaceKey] = SpaceThumbnail(
                         image: NSImage(cgImage: result.image,
                                        size: NSSize(width: CGFloat(result.image.width),
                                                     height: CGFloat(result.image.height))),
                         capturedAt: result.capturedAt
                     )
+                    self.ioQueue.async { [weak self] in
+                        self?.write(pngData: result.pngData, for: spaceKey)
+                    }
                 }
             }
         }

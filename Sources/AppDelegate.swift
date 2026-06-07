@@ -39,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         thumbnailCache.loadFromDisk()
         updaterController.startUpdater()
         refresh()
-        captureActiveThumbnail()
+        captureVisibleThumbnails()
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(activeSpaceChanged),
@@ -88,11 +88,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             lastActiveKey = snap.activeKey
             updateStatusTitle(snap: snap)
         }
+        pruneThumbnails(in: snap)
+        captureVisibleThumbnails(snap: snap)
+
         guard let activeKey = snap.activeKey, activeKey != lastActiveKey,
               let sp = snap.spaces.first(where: { $0.key == activeKey })
         else { return }
-        pruneThumbnails(in: snap)
-        thumbnailCache.capture(spaceKey: activeKey, displayID: sp.displayID)
         hud.show(text: store.displayName(for: sp))
     }
 
@@ -245,22 +246,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateMaintenanceItems(optionDown: isOptionKeyDown, force: true)
     }
 
-    private func captureActiveThumbnail(snap: Snapshot? = nil) {
+    private func captureVisibleThumbnails(snap: Snapshot? = nil) {
         let s = snap ?? SpacesProvider.snapshot()
-        guard let activeKey = s.activeKey,
-              let sp = s.spaces.first(where: { $0.key == activeKey })
-        else { return }
-        thumbnailCache.capture(spaceKey: activeKey, displayID: sp.displayID)
+        var capturedCurrentDisplay = false
+
+        for (displayID, key) in s.currentKeysByDisplay {
+            guard let sp = s.spaces.first(where: {
+                $0.displayID == displayID && $0.key == key
+            }) else { continue }
+
+            capturedCurrentDisplay = true
+            thumbnailCache.capture(
+                spaceKey: key,
+                displayID: sp.displayID,
+                isCurrent: { [weak self] in
+                    self?.isCurrent(spaceKey: key, displayID: sp.displayID) ?? false
+                }
+            )
+        }
+
+        if !capturedCurrentDisplay,
+           let activeKey = s.activeKey,
+           let sp = s.spaces.first(where: { $0.key == activeKey }) {
+            thumbnailCache.capture(
+                spaceKey: activeKey,
+                displayID: sp.displayID,
+                isCurrent: { [weak self] in
+                    self?.isCurrent(spaceKey: activeKey, displayID: sp.displayID) ?? false
+                }
+            )
+        }
+    }
+
+    private func isCurrent(spaceKey: String, displayID: String) -> Bool {
+        let snap = SpacesProvider.snapshot()
+        if let currentKey = snap.currentKeysByDisplay[displayID] {
+            return currentKey == spaceKey
+        }
+        return snap.activeKey == spaceKey
     }
 
     @objc private func requestThumbnailAccess(_ sender: Any?) {
         if thumbnailCache.hasScreenCaptureAccess {
-            captureActiveThumbnail()
+            captureVisibleThumbnails()
             return
         }
 
         if thumbnailCache.requestScreenCaptureAccess() {
-            captureActiveThumbnail()
+            captureVisibleThumbnails()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
                 self?.refresh()
             }
