@@ -477,7 +477,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             if optionDown,
                let identifier = bundleInfoString(for: "SMBuildIdentifier") {
-                return "\(baseTitle) (\(identifier))"
+                return identifier
             }
             return baseTitle
         }
