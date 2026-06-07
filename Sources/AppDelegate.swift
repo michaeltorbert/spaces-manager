@@ -215,6 +215,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        let buildInformation = NSMenuItem(title: buildInformationMenuTitle,
+                                          action: nil,
+                                          keyEquivalent: "")
+        buildInformation.isEnabled = false
+        menu.addItem(buildInformation)
+
         let checkForUpdates = NSMenuItem(title: updateMenuTitle,
                                          action: #selector(checkForUpdates(_:)),
                                          keyEquivalent: "")
@@ -443,6 +449,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var updateMenuTitle: String {
         isLocalDevelopmentBuild ? "Switch to Released Version…" : "Check for Updates…"
+    }
+
+    private var buildInformationMenuTitle: String {
+        if isLocalDevelopmentBuild {
+            if let identifier = bundleInfoString(for: "SMBuildIdentifier") {
+                return "SpacesManager dev \(identifier)"
+            }
+            return "SpacesManager dev build"
+        }
+
+        let version = bundleInfoString(for: "CFBundleShortVersionString")
+        let build = bundleInfoString(for: "CFBundleVersion")
+
+        switch (version, build) {
+        case let (.some(version), .some(build)):
+            return "SpacesManager \(version) (\(build))"
+        case let (.some(version), .none):
+            return "SpacesManager \(version)"
+        case let (.none, .some(build)):
+            return "SpacesManager build \(build)"
+        case (.none, .none):
+            return "SpacesManager"
+        }
+    }
+
+    private func bundleInfoString(for key: String) -> String? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: key) else { return nil }
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+        return nil
     }
 
     @objc private func relaunchSpacesManager() {
