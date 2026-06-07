@@ -13,7 +13,7 @@ remote_url="$(git remote get-url "$remote" 2>/dev/null || true)"
 case "$remote_url" in
   https://github.com/michaeltorbert/spaces-manager.git|\
   git@github.com:michaeltorbert/spaces-manager.git|\
-  ssh://git@github.com:michaeltorbert/spaces-manager.git)
+  ssh://git@github.com/michaeltorbert/spaces-manager.git)
     ;;
   *)
     die "pre-commit: origin is '$remote_url', not $target_repo."
