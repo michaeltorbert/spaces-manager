@@ -469,11 +469,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func buildInformationMenuTitle(optionDown: Bool) -> String {
         if isLocalDevelopmentBuild {
-            if let identifier = bundleInfoString(for: "SMBuildIdentifier") {
-                let displayed = optionDown ? identifier : conciseBuildIdentifier(identifier)
-                return "SpacesManager dev \(displayed)"
+            if optionDown,
+               let identifier = bundleInfoString(for: "SMBuildIdentifier") {
+                return "SpacesManager dev \(identifier)"
             }
-            return "SpacesManager dev build"
+            return "SpacesManager dev"
         }
 
         let version = bundleInfoString(for: "CFBundleShortVersionString")
@@ -489,13 +489,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case (.none, .none):
             return "SpacesManager"
         }
-    }
-
-    private func conciseBuildIdentifier(_ identifier: String) -> String {
-        if let timestampStart = identifier.range(of: " (")?.lowerBound {
-            return String(identifier[..<timestampStart])
-        }
-        return identifier
     }
 
     private func bundleInfoString(for key: String) -> String? {
