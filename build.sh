@@ -53,9 +53,17 @@ cp Assets/AppIcon.icns "$RESOURCES/AppIcon.icns"
 # replaced mid-test. The release workflow sets its own version from
 # `git rev-list --count HEAD` and runs with $CI set, so it's unaffected.
 if [ -z "${CI:-}" ]; then
+  build_identifier="$(git rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+  if [ -n "$(git status --porcelain 2>/dev/null || true)" ]; then
+    build_identifier="${build_identifier}-dirty"
+  fi
+  build_identifier="${build_identifier} ($(date '+%Y-%m-%d %H:%M:%S %z'))"
+
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 0" "$APP/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Add :SMDevelopmentBuild bool true" "$APP/Contents/Info.plist" 2>/dev/null \
     || /usr/libexec/PlistBuddy -c "Set :SMDevelopmentBuild true" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Add :SMBuildIdentifier string $build_identifier" "$APP/Contents/Info.plist" 2>/dev/null \
+    || /usr/libexec/PlistBuddy -c "Set :SMBuildIdentifier $build_identifier" "$APP/Contents/Info.plist"
 fi
 
 # Copy Sparkle.framework into the bundle, preserving symlinks.
