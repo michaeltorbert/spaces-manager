@@ -15,8 +15,9 @@ Cut a new tag any time `main` has shipped user-visible changes you want installe
 
 1. Merge the PR(s) into `main`.
 2. Pull `main` locally.
-3. Pick the next semver bump (patch for fixes, minor for features, major for breaks).
-4. `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. Run `./scripts/preflight.sh && ./build.sh` from a trustworthy checkout.
+4. Pick the next semver bump (patch for fixes, minor for features, major for breaks).
+5. `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
 If `main` has moved but no tag has been pushed, installed users are still on the previous release no matter how many PRs landed. The Info.plist in source (`1.0` / `1`) stays as placeholders forever; the actual version users see comes from the tag the workflow processes.
 
@@ -25,12 +26,13 @@ If `main` has moved but no tag has been pushed, installed users are still on the
 Triggered by any `v*` tag push. See [.github/workflows/release.yml](.github/workflows/release.yml).
 
 1. Derives the version: `CFBundleShortVersionString` from the tag (`v1.0.1` → `1.0.1`); `CFBundleVersion` from `git rev-list --count HEAD` (monotonically increasing build number — this is what Sparkle uses for "is this newer").
-2. Builds `SpacesManager.app` via `build.sh` (downloads Sparkle on the runner, links, signs the nested chain).
-3. Packages as `SpacesManager-<version>.zip`. Just the `.app`, no parent folder (Sparkle translocation guidance).
-4. Signs the zip with the EdDSA private key from the `SPARKLE_ED_PRIVATE_KEY` repo secret (matches the `SUPublicEDKey` in `Info.plist`).
-5. Updates `appcast.xml` via `generate_appcast`, preserving prior entries.
-6. Creates the GitHub Release (or appends to it if it already exists) and uploads the zip.
-7. Publishes `appcast.xml` to the `gh-pages` branch → served at <https://michaeltorbert.github.io/spaces-manager/appcast.xml>.
+2. Runs `scripts/preflight.sh` before rewriting `Info.plist`.
+3. Builds `SpacesManager.app` via `build.sh` (downloads Sparkle on the runner, links, signs the nested chain).
+4. Packages as `SpacesManager-<version>.zip`. Just the `.app`, no parent folder (Sparkle translocation guidance).
+5. Signs the zip with the EdDSA private key from the `SPARKLE_ED_PRIVATE_KEY` repo secret (matches the `SUPublicEDKey` in `Info.plist`).
+6. Updates `appcast.xml` via `generate_appcast`, preserving prior entries, then validates the XML.
+7. Creates the GitHub Release (or appends to it if it already exists) and uploads the zip.
+8. Publishes `appcast.xml` to the `gh-pages` branch → served at <https://michaeltorbert.github.io/spaces-manager/appcast.xml>.
 
 ## Version conventions
 
