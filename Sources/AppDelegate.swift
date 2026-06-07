@@ -481,7 +481,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         switch (version, build) {
         case let (.some(version), .some(build)):
-            return "SpacesManager \(version) (\(build))"
+            return optionDown ? "SpacesManager \(version) (\(build))" : "SpacesManager \(version)"
         case let (.some(version), .none):
             return "SpacesManager \(version)"
         case let (.none, .some(build)):
