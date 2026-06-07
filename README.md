@@ -18,7 +18,7 @@ Built and tested on **macOS Tahoe 26.3.1, Apple Silicon (M4)**. Older macOS vers
   to the existing app/display icons and shows **Enable Space Thumbnails…** in
   the menu.
 - **Click a space row** to switch to it. The first switch prompts for Accessibility permission so SpacesManager can send the same Dock swipe event as a trackpad space switch. Full-screen app spaces appear in the menu and can be targeted too.
-- **Hover a normal desktop space row** for quick buttons: move the frontmost window there, rename, or delete the space. Delete asks for confirmation first.
+- **Hover a normal desktop space row** for quick buttons to rename or delete the space. Delete asks for confirmation first.
 - **Brief HUD** fades in at the top of the screen on every space switch, showing the name.
 - **Rename Current Space…** quick action in the menu.
 - **Rename All Spaces…** opens a window for bulk editing.
@@ -118,7 +118,6 @@ Probed against macOS 26.3.1 (Tahoe) on Apple Silicon, here's what I found:
 | `SLSManagedDisplayGetCurrentSpace` | per-display current space |
 | `SLSSpaceDestroy` | (alias of CGSSpaceDestroy) |
 | `SLSCopySpacesForWindows` | map regular app windows from `CGWindowListCopyWindowInfo` back to their Mission Control spaces for menu counts and dominant-app metadata |
-| `SLSCopyWindowsWithOptionsAndTags`, `SLSMoveWindowsToManagedSpace`, `SLSAddWindowsToSpaces`, `SLSRemoveWindowsFromSpaces` | window↔space membership helpers; SpacesManager uses the move path for "move frontmost window here" row actions |
 | `SLSHWCaptureWindowList`, `SLSCaptureWindowsContentsToRectWithOptions` | window-image capture (not yet used) |
 | `SLSSpaceSetType`, `SLSSpaceGetType` | space type |
 
@@ -127,6 +126,7 @@ Probed against macOS 26.3.1 (Tahoe) on Apple Silicon, here's what I found:
 | Symbol | Was used for | Workaround |
 |---|---|---|
 | `CGSManagedDisplaySetCurrentSpace` / `SLSManagedDisplaySetCurrentSpace` | direct row-click switching | symbol still exists, but on Tahoe it only changes WindowServer bookkeeping and surfaces target-space windows over the current desktop. SpacesManager uses Accessibility-gated synthetic Dock swipe gestures instead. |
+| `SLSMoveWindowsToManagedSpace`, `SLSAddWindowsToSpaces` / `SLSRemoveWindowsFromSpaces`, `SLSSpaceSetCompatID` + `SLSSetWindowListWorkspace` | green-arrow "move frontmost window here" row action | symbols resolve and diagnostics can move caller-owned windows, but macOS 26.5 silently no-ops when SpacesManager tries to move another app's window. SpacesManager therefore removes this user-facing action instead of presenting a broken control. |
 
 ### Removed / missing on Tahoe
 
