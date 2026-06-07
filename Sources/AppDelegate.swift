@@ -702,6 +702,7 @@ extension AppDelegate: NSWindowDelegate {
 }
 
 private final class MenuCommandRowView: NSView {
+    private static let rowWidth: CGFloat = 340
     private let titleLabel = NSTextField(labelWithString: "")
     private let shortcutLabel = NSTextField(labelWithString: "")
     private var shortcutWidthConstraint: NSLayoutConstraint!
@@ -711,7 +712,7 @@ private final class MenuCommandRowView: NSView {
 
     init(title: String, shortcut: String, action: @escaping () -> Void) {
         self.action = action
-        super.init(frame: NSRect(x: 0, y: 0, width: 300, height: 30))
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.rowWidth, height: 30))
         wantsLayer = true
         autoresizingMask = [.width]
 
@@ -753,7 +754,7 @@ private final class MenuCommandRowView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: 300, height: 30)
+        NSSize(width: Self.rowWidth, height: 30)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {

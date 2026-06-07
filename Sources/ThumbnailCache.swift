@@ -14,7 +14,7 @@ final class ThumbnailCache {
     }()
 
     private let captureDelay: TimeInterval = 0.5
-    private let maxPixelSize = NSSize(width: 96, height: 60)
+    private let maxPixelSize = NSSize(width: 192, height: 120)
     private let ioQueue = DispatchQueue(label: "local.spacesmanager.thumbnail-cache",
                                         qos: .utility)
     private let directoryURL: URL
@@ -194,13 +194,20 @@ final class ThumbnailCache {
                                 height: CGFloat(image.height))
         guard sourceSize.width > 0, sourceSize.height > 0 else { return nil }
 
-        let scale = min(
+        let scale = max(
             maxPixelSize.width / sourceSize.width,
-            maxPixelSize.height / sourceSize.height,
-            CGFloat(1)
+            maxPixelSize.height / sourceSize.height
         )
-        let pixelWidth = max(1, Int((sourceSize.width * scale).rounded()))
-        let pixelHeight = max(1, Int((sourceSize.height * scale).rounded()))
+        let pixelWidth = max(1, Int(maxPixelSize.width.rounded()))
+        let pixelHeight = max(1, Int(maxPixelSize.height.rounded()))
+        let drawWidth = sourceSize.width * scale
+        let drawHeight = sourceSize.height * scale
+        let drawRect = CGRect(
+            x: (CGFloat(pixelWidth) - drawWidth) / 2,
+            y: (CGFloat(pixelHeight) - drawHeight) / 2,
+            width: drawWidth,
+            height: drawHeight
+        )
 
         guard let context = CGContext(
             data: nil,
@@ -213,9 +220,7 @@ final class ThumbnailCache {
         ) else { return nil }
 
         context.interpolationQuality = .medium
-        context.draw(image, in: CGRect(x: 0, y: 0,
-                                       width: pixelWidth,
-                                       height: pixelHeight))
+        context.draw(image, in: drawRect)
         return context.makeImage()
     }
 

@@ -3,10 +3,10 @@ import AppKit
 // MARK: - Custom menu row
 
 final class SpaceRowView: NSView {
-    private static let rowWidth: CGFloat = 300
+    private static let rowWidth: CGFloat = 340
     private static let compactRowHeight: CGFloat = 26
-    private static let thumbnailRowHeight: CGFloat = 54
-    private static let thumbnailSize = NSSize(width: 72, height: 45)
+    private static let thumbnailRowHeight: CGFloat = 72
+    private static let thumbnailSize = NSSize(width: 96, height: 60)
 
     private let rowHeight: CGFloat
     private let isActive: Bool
@@ -71,6 +71,9 @@ final class SpaceRowView: NSView {
         thumbnailView.wantsLayer = true
         thumbnailView.layer?.cornerRadius = 4
         thumbnailView.layer?.masksToBounds = true
+        thumbnailView.layer?.borderWidth = 0.5
+        thumbnailView.layer?.borderColor = NSColor.separatorColor
+            .withAlphaComponent(0.85).cgColor
         thumbnailView.layer?.backgroundColor = NSColor.separatorColor
             .withAlphaComponent(0.35).cgColor
         thumbnailView.isHidden = thumbnail == nil
@@ -111,7 +114,7 @@ final class SpaceRowView: NSView {
 
         textStack.orientation = .vertical
         textStack.alignment = .leading
-        textStack.spacing = 1
+        textStack.spacing = 2
         textStack.translatesAutoresizingMaskIntoConstraints = false
         textStack.addArrangedSubview(nameLabel)
         textStack.addArrangedSubview(ageLabel)
@@ -134,15 +137,15 @@ final class SpaceRowView: NSView {
 
         var constraints = [
             textStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            textStack.trailingAnchor.constraint(lessThanOrEqualTo: actionStack.leadingAnchor, constant: -8),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: actionStack.leadingAnchor, constant: -10),
 
-            actionStack.trailingAnchor.constraint(equalTo: checkmark.leadingAnchor, constant: -8),
+            actionStack.trailingAnchor.constraint(equalTo: checkmark.leadingAnchor, constant: -10),
             actionStack.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            checkmark.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            checkmark.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
             checkmark.centerYAnchor.constraint(equalTo: centerYAnchor),
-            checkmark.widthAnchor.constraint(equalToConstant: 14),
-            checkmark.heightAnchor.constraint(equalToConstant: 14),
+            checkmark.widthAnchor.constraint(equalToConstant: 16),
+            checkmark.heightAnchor.constraint(equalToConstant: 16),
         ]
 
         if thumbnail == nil {
@@ -155,11 +158,11 @@ final class SpaceRowView: NSView {
             ])
         } else {
             constraints.append(contentsOf: [
-                thumbnailView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+                thumbnailView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
                 thumbnailView.centerYAnchor.constraint(equalTo: centerYAnchor),
                 thumbnailView.widthAnchor.constraint(equalToConstant: Self.thumbnailSize.width),
                 thumbnailView.heightAnchor.constraint(equalToConstant: Self.thumbnailSize.height),
-                textStack.leadingAnchor.constraint(equalTo: thumbnailView.trailingAnchor, constant: 10),
+                textStack.leadingAnchor.constraint(equalTo: thumbnailView.trailingAnchor, constant: 12),
             ])
         }
         NSLayoutConstraint.activate(constraints)
@@ -279,23 +282,33 @@ final class SpaceRowView: NSView {
 
     private static func ageText(for capturedAt: Date) -> String {
         let seconds = max(0, Int(Date().timeIntervalSince(capturedAt)))
-        if seconds < 60 { return "Captured just now" }
+        if seconds < 60 { return "Updated just now" }
 
         let minutes = seconds / 60
         if minutes < 60 {
-            return "Captured \(minutes)m ago"
+            return "Updated \(minutes)m ago"
         }
 
         let hours = minutes / 60
         if hours < 24 {
-            return "Captured \(hours)h ago"
+            return "Updated \(hours)h ago"
         }
 
         let days = hours / 24
-        return "Captured \(days)d ago"
+        return "Updated \(days)d ago"
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        if isActive {
+            let activePath = NSBezierPath(
+                roundedRect: bounds.insetBy(dx: 5, dy: 1),
+                xRadius: 5,
+                yRadius: 5
+            )
+            NSColor.controlAccentColor.withAlphaComponent(0.08).setFill()
+            activePath.fill()
+        }
+
         guard isHovered else { return }
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 1),
                                 xRadius: 4, yRadius: 4)
